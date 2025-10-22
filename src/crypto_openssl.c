@@ -1,33 +1,14 @@
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <openssl/bio.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
-#include <openssl/opensslv.h>
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
-#ifndef OPENSSL_NO_ENGINE
-#include <openssl/engine.h>
-#endif
 
 #include "apk_crypto.h"
-
-// Copmatibility with older openssl
-
-#if OPENSSL_VERSION_NUMBER < 0x1010000fL || (defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x2070000fL)
-
-static inline EVP_MD_CTX *EVP_MD_CTX_new(void)
-{
-	return EVP_MD_CTX_create();
-}
-
-static inline void EVP_MD_CTX_free(EVP_MD_CTX *mdctx)
-{
-	return EVP_MD_CTX_destroy(mdctx);
-}
-
-#endif
 
 // OpenSSL opaque types mapped directly to the priv
 
@@ -45,40 +26,9 @@ static void apk_pkey_set_pkey(struct apk_pkey *pkey, EVP_PKEY *pk)
 	pkey->priv = pk;
 }
 
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-static EVP_MD *sha1 = NULL;
-static EVP_MD *sha256 = NULL;
-static EVP_MD *sha512 = NULL;
-
-static inline void lookup_algorithms(void)
-{
-	sha1 = EVP_MD_fetch(NULL, "sha1", NULL);
-	sha256 = EVP_MD_fetch(NULL, "sha256", NULL);
-	sha512 = EVP_MD_fetch(NULL, "sha512", NULL);
-}
-
-static inline void free_algorithms(void)
-{
-	EVP_MD_free(sha1);
-	EVP_MD_free(sha256);
-	EVP_MD_free(sha512);
-}
-#else
 static const EVP_MD *sha1 = NULL;
 static const EVP_MD *sha256 = NULL;
 static const EVP_MD *sha512 = NULL;
-
-static inline void lookup_algorithms(void)
-{
-	sha1 = EVP_sha1();
-	sha256 = EVP_sha256();
-	sha512 = EVP_sha512();
-}
-
-static inline void free_algorithms(void)
-{
-}
-#endif
 
 static inline const EVP_MD *apk_digest_alg_to_evp(uint8_t alg) {
 	/*
@@ -240,30 +190,27 @@ int apk_verify(struct apk_digest_ctx *dctx, void *sig, size_t len)
 	return 0;
 }
 
+#ifdef HAVE_EVP_MD_FETCH
 static void apk_crypto_cleanup(void)
 {
-	free_algorithms();
-
-#if OPENSSL_VERSION_NUMBER < 0x1010000fL || (defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x2070000fL)
-	EVP_cleanup();
-#ifndef OPENSSL_NO_ENGINE
-	ENGINE_cleanup();
-#endif
-	CRYPTO_cleanup_all_ex_data();
-#endif
+	EVP_MD_free((EVP_MD *)sha1);
+	EVP_MD_free((EVP_MD *)sha256);
+	EVP_MD_free((EVP_MD *)sha512);
 }
+#endif
 
 void apk_crypto_init(void)
 {
+#ifdef HAVE_EVP_MD_FETCH
+	// Provider-aware API, available in OpenSSL 3+, LibreSSL 4.1+, BoringSSL
+	sha1 = EVP_MD_fetch(NULL, "sha1", NULL);
+	sha256 = EVP_MD_fetch(NULL, "sha256", NULL);
+	sha512 = EVP_MD_fetch(NULL, "sha512", NULL);
 	atexit(apk_crypto_cleanup);
-
-#if OPENSSL_VERSION_NUMBER < 0x1010000fL || (defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x2070000fL)
-	OpenSSL_add_all_algorithms();
-#ifndef OPENSSL_NO_ENGINE
-	ENGINE_load_builtin_engines();
-	ENGINE_register_all_complete();
+#else
+	// Static legacy methods, present in all supported libraries
+	sha1 = EVP_sha1();
+	sha256 = EVP_sha256();
+	sha512 = EVP_sha512();
 #endif
-#endif
-
-	lookup_algorithms();
 }

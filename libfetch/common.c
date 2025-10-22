@@ -503,11 +503,7 @@ static int map_tls_error(void)
 int
 fetch_ssl(conn_t *conn, const struct url *URL, int verbose)
 {
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-	conn->ssl_meth = SSLv23_client_method();
-#else
 	conn->ssl_meth = TLS_client_method();
-#endif
 	conn->ssl_ctx = SSL_CTX_new(conn->ssl_meth);
 	SSL_CTX_set_mode(conn->ssl_ctx, SSL_MODE_AUTO_RETRY);
 

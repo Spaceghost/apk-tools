@@ -24,8 +24,13 @@ scdoc_dep = dependency('scdoc', version: '>=1.10', required: get_option('docs'),
 zlib_dep = dependency('zlib')
 libzstd_dep = dependency('libzstd', required: get_option('zstd'))
 
+cc = meson.get_compiler('c')
+
 if get_option('crypto_backend') == 'openssl'
-	crypto_dep = dependency('openssl')
+	crypto_dep = dependency('openssl', version: '>=1.1.0')
+	if cc.has_function('EVP_MD_fetch', dependencies: crypto_dep)
+		add_project_arguments('-DHAVE_EVP_MD_FETCH', language: 'c')
+	endif
 elif get_option('crypto_backend') == 'mbedtls'
 	crypto_dep = [ dependency('mbedtls'), dependency('mbedcrypto') ]
 endif
