@@ -69,16 +69,6 @@ build:alpine-muon:
     - ci-build
     - x86_64
 
-build:alpine-legacy:
-  stage: build
-  image: alpinelinux/build-base:latest-x86_64
-  script:
-    - abuild-apk add -u $ALPINE_DEPS zstd-dev
-    - make -j$(nproc) check
-  tags:
-    - ci-build
-    - x86_64
-
 build:debian:
   image: debian
   stage: build
