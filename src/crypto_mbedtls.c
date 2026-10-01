@@ -250,7 +250,7 @@ static inline int apk_mbedtls_sign(struct apk_digest_ctx *dctx, struct apk_diges
 	struct apk_mbed_digest *md = mbed_digest(dctx);
 	struct apk_mbed_pkey *mp = mbed_pkey(md->sigver_key);
 
-	return mbedtls_pk_sign(&mp->pkg, apk_digest_alg_to_mbedtls_type(dctx->alg),
+	return mbedtls_pk_sign(&mp->pk, apk_digest_alg_to_mbedtls_type(dctx->alg),
 			       (const unsigned char *)&dig->data, dig->len, sig, sig_len,
 			       apk_mbedtls_random, NULL);
 }
