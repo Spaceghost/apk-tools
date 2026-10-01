@@ -15,10 +15,8 @@
 #include <unistd.h>
 
 #include <mbedtls/platform.h>
-#include <mbedtls/bignum.h>
 #include <mbedtls/md.h>
 #include <mbedtls/pk.h>
-#include <mbedtls/entropy.h>
 
 #ifdef MBEDTLS_PSA_CRYPTO_C
 #include <psa/crypto.h>
