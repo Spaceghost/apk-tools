@@ -191,8 +191,10 @@ int apk_blob_subst(char *buf, size_t sz, apk_blob_t fmt, int (*res)(void *ctx, a
 		if (!apk_blob_split(key, var_end, &key, &fmt)) return -APKE_FORMAT_INVALID;
 		char *max_advance = to.ptr + to.len;
 		if (apk_blob_split(key, colon, &key, &len)) {
-			max_advance = to.ptr + apk_blob_pull_uint(&len, 10);
-			if (len.len) return -APKE_FORMAT_INVALID;
+			uint64_t len_value = apk_blob_pull_uint(&len, 10);
+			if (APK_BLOB_IS_NULL(len) || len.len || len_value > to.len)
+				return -APKE_FORMAT_INVALID;
+			max_advance = to.ptr + len_value;
 		}
 		ret = res(ctx, key, &to);
 		if (ret < 0) return ret;
@@ -254,7 +256,7 @@ static unsigned char digitdecode[] = {
 	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 };
 
-static inline int dx(unsigned char c)
+static inline uint8_t dx(unsigned char c)
 {
 	return digitdecode[c];
 }
@@ -417,21 +419,38 @@ void apk_blob_pull_char(apk_blob_t *b, int expected)
 
 uint64_t apk_blob_pull_uint(apk_blob_t *b, int radix)
 {
-	uint64_t val;
-	int ch;
+#if __has_builtin(__builtin_add_overflow) && __has_builtin(__builtin_mul_overflow)
+#define HAVE_OVERFLOW_BUILTIN 1
+#elif defined(__GNUC__) && __GNUC__ >= 5
+#define HAVE_OVERFLOW_BUILTIN 1
+#endif
 
-	val = 0;
+#ifndef HAVE_OVERFLOW_BUILTIN
+	uint64_t cutoff = UINT64_MAX / radix;
+	uint64_t cutlim = UINT64_MAX % radix;
+#endif
+	uint64_t val = 0;
+
 	while (b->len && b->ptr[0] != 0) {
-		ch = dx(b->ptr[0]);
+		uint8_t ch = dx(b->ptr[0]);
 		if (ch >= radix)
 			break;
-		val *= radix;
-		val += ch;
-
+#ifndef HAVE_OVERFLOW_BUILTIN
+		if (val > cutoff || (val == cutoff && (uint64_t)ch > cutlim)) {
+			*b = APK_BLOB_NULL;
+			return UINT64_MAX;
+		}
+		val = val * radix + ch;
+#else
+		if (__builtin_mul_overflow(val, (uint64_t)radix, &val) ||
+		    __builtin_add_overflow(val, (uint64_t)ch, &val)) {
+			*b = APK_BLOB_NULL;
+			return UINT64_MAX;
+		}
+#endif
 		b->ptr++;
 		b->len--;
 	}
-
 	return val;
 }
 

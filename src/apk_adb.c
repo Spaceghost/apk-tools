@@ -256,7 +256,7 @@ static apk_blob_t int_tostring(struct adb *db, adb_val_t val, char *buf, size_t 
 static adb_val_t int_fromstring(struct adb *db, apk_blob_t val)
 {
 	uint64_t n = apk_blob_pull_uint(&val, 10);
-	if (val.len) return ADB_ERROR(EINVAL);
+	if (APK_BLOB_IS_NULL(val) || val.len) return ADB_ERROR(EINVAL);
 	return adb_w_int(db, n);
 }
 
@@ -292,7 +292,7 @@ static apk_blob_t oct_tostring(struct adb *db, adb_val_t val, char *buf, size_t 
 static adb_val_t oct_fromstring(struct adb *db, apk_blob_t val)
 {
 	uint64_t n = apk_blob_pull_uint(&val, 8);
-	if (val.len) return ADB_ERROR(EINVAL);
+	if (APK_BLOB_IS_NULL(val) || val.len) return ADB_ERROR(EINVAL);
 	return adb_w_int(db, n);
 }
 
@@ -312,7 +312,10 @@ static adb_val_t hsize_fromstring(struct adb *db, apk_blob_t val)
 		return int_fromstring(db, val);
 
 	uint64_t n = apk_blob_pull_uint(&l, 10);
-	int sz = apk_get_human_size_unit(r);
+	if (APK_BLOB_IS_NULL(l) || l.len) return ADB_ERROR(EINVAL);
+
+	uint64_t sz = apk_get_human_size_unit(r);
+	if (n > UINT64_MAX / sz) return ADB_ERROR(EINVAL);
 	n *= sz;
 	return adb_w_int(db, n);
 }

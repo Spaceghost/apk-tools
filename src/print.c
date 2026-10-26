@@ -115,9 +115,10 @@ const char *apk_last_path_segment(const char *path)
 
 static const char *size_units[] = {"B", "KiB", "MiB", "GiB", "TiB"};
 
-int apk_get_human_size_unit(apk_blob_t b)
+uint64_t apk_get_human_size_unit(apk_blob_t b)
 {
-	for (int i = 0, s = 1; i < ARRAY_SIZE(size_units); i++, s *= 1024)
+	uint64_t s = 1;
+	for (int i = 0; i < ARRAY_SIZE(size_units); i++, s *= 1024)
 		if (apk_blob_compare(b, APK_BLOB_STR(size_units[i])) == 0)
 			return s;
 	return 1;

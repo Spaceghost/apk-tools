@@ -17,7 +17,7 @@ struct apk_progress;
 
 const char *apk_error_str(int error);
 const char *apk_last_path_segment(const char *);
-int apk_get_human_size_unit(apk_blob_t b);
+uint64_t apk_get_human_size_unit(apk_blob_t b);
 apk_blob_t apk_fmt_human_size(char *buf, size_t sz, uint64_t val, int pretty_print);
 apk_blob_t apk_url_sanitize(apk_blob_t url, struct apk_balloc *ba);
 
