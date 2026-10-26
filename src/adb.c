@@ -456,20 +456,25 @@ apk_blob_t adb_r_blob(const struct adb *db, adb_val_t v)
 		blob = adb_r_deref(db, v, 0, 1);
 		if (!blob) return APK_BLOB_NULL;
 		len = *(uint8_t*) blob;
-		return APK_BLOB_PTR_LEN(adb_r_deref(db, v, 1, len), len);
+		blob = adb_r_deref(db, v, 1, len);
+		break;
 	case ADB_TYPE_BLOB_16:
 		blob = adb_r_deref(db, v, 0, 2);
 		if (!blob) return APK_BLOB_NULL;
 		len = le16toh(*(uint16_t*) blob);
-		return APK_BLOB_PTR_LEN(adb_r_deref(db, v, 2, len), len);
+		blob = adb_r_deref(db, v, 2, len);
+		break;
 	case ADB_TYPE_BLOB_32:
 		blob = adb_r_deref(db, v, 0, 4);
 		if (!blob) return APK_BLOB_NULL;
 		len = le32toh(*(uint32_t*) blob);
-		return APK_BLOB_PTR_LEN(adb_r_deref(db, v, 4, len), len);
+		blob = adb_r_deref(db, v, 4, len);
+		break;
 	default:
 		return APK_BLOB_NULL;
 	}
+	if (!blob) return APK_BLOB_NULL;
+	return APK_BLOB_PTR_LEN(blob, len);
 }
 
 struct adb_obj *adb_r_obj(struct adb *db, adb_val_t v, struct adb_obj *obj, const struct adb_object_schema *schema)
