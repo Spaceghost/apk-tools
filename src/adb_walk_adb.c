@@ -8,6 +8,7 @@
 #include "apk_print.h"
 
 struct adb_walk_ctx {
+	struct apk_trust trust_all;
 	struct apk_serializer *ser;
 	struct adb db;
 	struct adb_verify_ctx vfy;
@@ -48,7 +49,7 @@ static int dump_item(struct adb_walk_ctx *ctx, const char *name, const uint8_t *
 		origdb = ctx->db;
 		adb_m_process(&ctx->db, &is,
 			container_of(kind, struct adb_adb_schema, kind)->schema_id | ADB_SCHEMA_IMPLIED,
-			0, NULL, adb_walk_block);
+			&ctx->trust_all, NULL, adb_walk_block);
 		ctx->db = origdb;
 		break;
 	case ADB_KIND_OBJECT:;
@@ -152,10 +153,7 @@ static int adb_walk_block(struct adb *db, struct adb_block *b, struct apk_istrea
 
 int adb_walk_adb(struct apk_istream *is, struct apk_ostream *os, const struct apk_serializer_ops *ops, struct apk_ctx *ac)
 {
-	struct apk_trust allow_untrusted = {
-		.allow_untrusted = 1,
-	};
-	struct adb_walk_ctx ctx = { 0 };
+	struct adb_walk_ctx ctx = { .trust_all.allow_untrusted = 1, };
 	int r;
 
 	ctx.ser = apk_serializer_init_alloca(ac, ops, os);
@@ -165,7 +163,7 @@ int adb_walk_adb(struct apk_istream *is, struct apk_ostream *os, const struct ap
 	}
 	ctx.ser->trust = apk_ctx_get_trust(ac);
 
-	r = adb_m_process(&ctx.db, is, 0, &allow_untrusted, NULL, adb_walk_block);
+	r = adb_m_process(&ctx.db, is, 0, &ctx.trust_all, NULL, adb_walk_block);
 	adb_free(&ctx.db);
 	apk_serializer_cleanup(ctx.ser);
 	return r;
