@@ -200,6 +200,7 @@ static int apk_extract_v3_next_file(struct apk_extract_ctx *ectx)
 		for (; ctx->cur_file <= adb_ra_num(&ctx->files); ctx->cur_file++) {
 			adb_ro_obj(&ctx->files, ctx->cur_file, &ctx->file);
 			n = apk_pathbuilder_pushb(&ctx->pb, adb_ro_blob(&ctx->file, ADBI_FI_NAME));
+			if (n < 0) return n;
 			target = adb_ro_blob(&ctx->file, ADBI_FI_TARGET);
 			if (adb_ro_int(&ctx->file, ADBI_FI_SIZE) != 0 && APK_BLOB_IS_NULL(target))
 				return 0;

@@ -438,12 +438,48 @@ static void mkpkg_setup_compat(struct mkpkg_ctx *ctx)
 	}
 }
 
+static int mkpkg_write_files(struct mkpkg_ctx *ctx, int files_fd, struct apk_ostream *os)
+{
+	for (int i = ADBI_FIRST; i <= adb_ra_num(&ctx->paths); i++) {
+		struct adb_obj path, files, file;
+		adb_ro_obj(&ctx->paths, i, &path);
+		adb_ro_obj(&path, ADBI_DI_FILES, &files);
+		apk_blob_t dirname = adb_ro_blob(&path, ADBI_DI_NAME);
+
+		int r = apk_pathbuilder_setb(&ctx->pb, dirname);
+		if (r < 0) return r;
+
+		for (int j = ADBI_FIRST; j <= adb_ra_num(&files); j++) {
+			adb_ro_obj(&files, j, &file);
+			apk_blob_t filename = adb_ro_blob(&file, ADBI_FI_NAME);
+			apk_blob_t target = adb_ro_blob(&file, ADBI_FI_TARGET);
+			uint64_t sz = adb_ro_int(&file, ADBI_FI_SIZE);
+			if (!APK_BLOB_IS_NULL(target)) continue;
+			if (!sz) continue;
+			struct adb_data_package hdr = {
+				.path_idx = htole32(i),
+				.file_idx = htole32(j),
+			};
+			int n = apk_pathbuilder_pushb(&ctx->pb, filename);
+			if (n < 0) return n;
+			r = adb_c_block_data(
+				os, APK_BLOB_STRUCT(hdr), sz,
+				apk_istream_from_fd(openat(files_fd,
+					apk_pathbuilder_cstr(&ctx->pb),
+					O_RDONLY | O_CLOEXEC)));
+			if (r < 0) return r;
+			apk_pathbuilder_pop(&ctx->pb, n);
+		}
+	}
+	return 0;
+}
+
 static int mkpkg_main(void *pctx, struct apk_ctx *ac, struct apk_string_array *args)
 {
 	struct apk_out *out = &ac->out;
 	struct apk_trust *trust = apk_ctx_get_trust(ac);
 	struct adb_obj pkg, pkgi;
-	int i, j, r, dirfd = -1;
+	int i, r, dirfd = -1;
 	struct mkpkg_ctx *ctx = pctx;
 	struct apk_ostream *os;
 	struct apk_digest d = {};
@@ -551,37 +587,11 @@ static int mkpkg_main(void *pctx, struct apk_ctx *ac, struct apk_string_array *a
 	adb_c_adb(os, &ctx->db, trust);
 	if (ctx->files_dir) {
 		int files_fd = openat(AT_FDCWD, ctx->files_dir, O_DIRECTORY | O_RDONLY | O_CLOEXEC);
-		for (i = ADBI_FIRST; i <= adb_ra_num(&ctx->paths); i++) {
-			struct adb_obj path, files, file;
-			adb_ro_obj(&ctx->paths, i, &path);
-			adb_ro_obj(&path, ADBI_DI_FILES, &files);
-			apk_blob_t dirname = adb_ro_blob(&path, ADBI_DI_NAME);
-
-			apk_pathbuilder_setb(&ctx->pb, dirname);
-			for (j = ADBI_FIRST; j <= adb_ra_num(&files); j++) {
-				adb_ro_obj(&files, j, &file);
-				apk_blob_t filename = adb_ro_blob(&file, ADBI_FI_NAME);
-				apk_blob_t target = adb_ro_blob(&file, ADBI_FI_TARGET);
-				uint64_t sz = adb_ro_int(&file, ADBI_FI_SIZE);
-				if (!APK_BLOB_IS_NULL(target)) continue;
-				if (!sz) continue;
-				struct adb_data_package hdr = {
-					.path_idx = htole32(i),
-					.file_idx = htole32(j),
-				};
-				int n = apk_pathbuilder_pushb(&ctx->pb, filename);
-				adb_c_block_data(
-					os, APK_BLOB_STRUCT(hdr), sz,
-					apk_istream_from_fd(openat(files_fd,
-						apk_pathbuilder_cstr(&ctx->pb),
-						O_RDONLY | O_CLOEXEC)));
-				apk_pathbuilder_pop(&ctx->pb, n);
-			}
-		}
+		r = mkpkg_write_files(ctx, files_fd, os);
+		if (r < 0) apk_ostream_cancel(os, r);
 		close(files_fd);
 	}
 	r = apk_ostream_close(os);
-
 err:
 	adb_wo_free(&ctx->paths);
 	adb_free(&ctx->db);

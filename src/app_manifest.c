@@ -100,6 +100,7 @@ static int process_v3_meta(struct apk_extract_ctx *ectx, struct adb_obj *pkg)
 		for (j = ADBI_FIRST; j <= adb_ra_num(&files); j++) {
 			adb_ro_obj(&files, j, &file);
 			n = apk_pathbuilder_pushb(&pb, adb_ro_blob(&file, ADBI_FI_NAME));
+			if (n < 0) return n;
 			apk_digest_from_blob(&digest, adb_ro_blob(&file, ADBI_FI_HASHES));
 
 			hex = APK_BLOB_BUF(buf);

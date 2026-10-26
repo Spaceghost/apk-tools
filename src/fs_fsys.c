@@ -185,6 +185,7 @@ static int fsys_file_control(struct apk_fsdir *d, apk_blob_t filename, int ctrl)
 	apk_blob_t dirname = apk_pathbuilder_get(&d->pb);
 
 	n = apk_pathbuilder_pushb(&d->pb, filename);
+	if (n < 0) return n;
 	fn = apk_pathbuilder_cstr(&d->pb);
 
 	switch (ctrl) {
@@ -236,6 +237,7 @@ static int fsys_file_info(struct apk_fsdir *d, apk_blob_t filename,
 	int n, r;
 
 	n = apk_pathbuilder_pushb(&d->pb, filename);
+	if (n < 0) return n;
 	r = apk_fileinfo_get(apk_ctx_fd_dest(ac), apk_pathbuilder_cstr(&d->pb), flags, fi, &ac->db->atoms);
 	apk_pathbuilder_pop(&d->pb, n);
 	return r;

@@ -218,6 +218,11 @@ int apk_repoparser_parse(struct apk_repoparser *rp, apk_blob_t line, bool allow_
 	apk_pathbuilder_setb(&pb, url);
 	apk_blob_foreach_word(component, components) {
 		int n = apk_pathbuilder_pushb(&pb, component);
+		if (n < 0) {
+			apk_warn(out, "%s:%d: too long url with component: " BLOB_FMT,
+				rp->file, rp->line, BLOB_PRINTF(url));
+			continue;
+		}
 		r = rp->ops->repository(rp, apk_pathbuilder_get(&pb), index_file, tag);
 		if (r) return r;
 		apk_pathbuilder_pop(&pb, n);
