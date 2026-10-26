@@ -407,11 +407,11 @@ static void tee_get_meta(struct apk_istream *is, struct apk_file_meta *meta)
 	apk_istream_get_meta(tee->inner_is, meta);
 }
 
-static int __tee_write(struct apk_tee_istream *tee, void *ptr, size_t size)
+static ssize_t __tee_write(struct apk_tee_istream *tee, void *ptr, size_t size)
 {
 	int r = apk_ostream_write(tee->to, ptr, size);
 	if (r < 0) return r;
-	return size;
+	return (ssize_t) size;
 }
 
 static ssize_t tee_read(struct apk_istream *is, void *ptr, size_t size)
@@ -655,7 +655,7 @@ int apk_istream_skip(struct apk_istream *is, uint64_t size)
 		if (r < 0) return r;
 		done += d.len;
 	}
-	return done;
+	return 0;
 }
 
 int64_t apk_stream_copy(struct apk_istream *is, struct apk_ostream *os, uint64_t size, struct apk_digest_ctx *dctx)
