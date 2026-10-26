@@ -22,6 +22,7 @@ static inline struct adb_block *adb_block_validate(struct adb_block *blk, apk_bl
 	size_t hdrlen = adb_block_hdrsize(blk);
 	if (hdrlen > len) return ERR_PTR(-APKE_ADB_BLOCK);
 	if (adb_block_rawsize(blk) < hdrlen) return ERR_PTR(-APKE_ADB_BLOCK);
+	if (adb_block_rawsize(blk) > len) return ERR_PTR(-APKE_ADB_BLOCK);
 	if (adb_block_size(blk) > len) return ERR_PTR(-APKE_ADB_BLOCK);
 	return blk;
 }
@@ -261,7 +262,8 @@ static int __adb_m_stream(struct adb *db, struct apk_istream *is, uint32_t expec
 		if (r != hdrsize) break;
 
 		type = adb_block_type(&blk);
-		if (type >= ADB_BLOCK_MAX || !(BIT(type) & allowed)) {
+		if (adb_block_rawsize(&blk) < hdrsize ||
+		    type >= ADB_BLOCK_MAX || !(BIT(type) & allowed)) {
 			r = -APKE_ADB_BLOCK;
 			break;
 		}
