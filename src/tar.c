@@ -71,7 +71,7 @@ static int blob_realloc(apk_blob_t *b, size_t newsize)
 	return 0;
 }
 
-static int handle_extended_header(struct apk_file_info *fi, apk_blob_t hdr)
+static int handle_extended_header(struct apk_file_info *fi, apk_blob_t hdr, size_t *name_len)
 {
 	apk_blob_t name, value;
 
@@ -93,8 +93,11 @@ static int handle_extended_header(struct apk_file_info *fi, apk_blob_t hdr)
 		value.ptr[value.len] = 0;
 
 		if (apk_blob_compare(name, APK_BLOB_STR("path")) == 0) {
+			if (value.len >= PATH_MAX-10) return -ENAMETOOLONG;
 			fi->name = value.ptr;
+			*name_len = value.len;
 		} else if (apk_blob_compare(name, APK_BLOB_STR("linkpath")) == 0) {
+			if (value.len >= PATH_MAX-10) return -ENAMETOOLONG;
 			fi->link_target = value.ptr;
 		} else if (apk_blob_pull_blob_match(&name, APK_BLOB_STR("SCHILY.xattr."))) {
 			name.ptr[name.len] = 0;
@@ -123,15 +126,14 @@ int apk_tar_parse(struct apk_istream *is, apk_archive_entry_parser parser,
 	struct apk_segment_istream segment;
 	struct tar_header buf;
 	int end = 0, r;
-	size_t toskip, paxlen = 0;
-	apk_blob_t pax = APK_BLOB_NULL, longname = APK_BLOB_NULL;
-	char filename[sizeof buf.name + sizeof buf.prefix + 2];
+	size_t toskip, paxlen = 0, entry_len = 0, longname_len = 0;
+	apk_blob_t pax = APK_BLOB_NULL;
+	char filename[PATH_MAX];
 
 	if (IS_ERR(is)) return PTR_ERR(is);
 
 	memset(&entry, 0, sizeof(entry));
 	apk_xattr_array_init(&entry.xattrs);
-	entry.name = buf.name;
 	while ((r = apk_istream_read_max(is, &buf, 512)) == 512) {
 		if (buf.name[0] == '\0') {
 			if (end) break;
@@ -150,7 +152,7 @@ int apk_tar_parse(struct apk_istream *is, apk_archive_entry_parser parser,
 			.gid   = apk_id_cache_resolve_gid(idc, TAR_BLOB(buf.gname), GET_OCTAL(buf.gid, &r)),
 			.mode  = GET_OCTAL(buf.mode, &r) & 07777,
 			.mtime = GET_OCTAL(buf.mtime, &r),
-			.name  = entry.name,
+			.name  = buf.name,
 			.uname = buf.uname,
 			.gname = buf.gname,
 			.device = makedev(GET_OCTAL(buf.devmajor, &r),
@@ -159,33 +161,38 @@ int apk_tar_parse(struct apk_istream *is, apk_archive_entry_parser parser,
 		};
 		if (r != 0) goto err;
 
-		if (buf.prefix[0] && buf.typeflag != 'x' && buf.typeflag != 'g') {
+		if (longname_len) {
+			entry.name = filename;
+			entry_len = longname_len;
+		} else if (buf.prefix[0] && buf.typeflag != 'x' && buf.typeflag != 'g') {
 			r = apk_fmt(filename, sizeof filename, "%.*s/%.*s",
 				 (int) sizeof buf.prefix, buf.prefix,
 				 (int) sizeof buf.name, buf.name);
 			if (r < 0) goto err;
 			entry.name = filename;
+			entry_len = r;
+		} else {
+			entry_len = strnlen(buf.name, sizeof buf.name);
 		}
+
 		buf.mode[0] = 0; /* to nul terminate 100-byte buf.name */
 		buf.magic[0] = 0; /* to nul terminate 100-byte buf.linkname */
 		apk_array_truncate(entry.xattrs, 0);
 
 		if (entry.size >= SSIZE_MAX-512) goto err;
 
-		if (paxlen) {
-			if ((r = handle_extended_header(&entry, APK_BLOB_PTR_LEN(pax.ptr, paxlen))) != 0)
-				goto err;
-			apk_fileinfo_hash_xattr(&entry, APK_DIGEST_SHA1);
-		}
-
 		toskip = (entry.size + 511) & -512;
 		switch (buf.typeflag) {
 		case 'L': /* GNU long name extension */
-			if ((r = blob_realloc(&longname, entry.size+1)) != 0 ||
-			    (r = apk_istream_read(is, longname.ptr, entry.size)) < 0)
+			if (entry.size >= PATH_MAX-10) {
+				r = -ENAMETOOLONG;
 				goto err;
-			longname.ptr[entry.size] = 0;
-			entry.name = longname.ptr;
+			}
+			if ((r = apk_istream_read(is, filename, entry.size)) < 0)
+				goto err;
+			filename[entry.size] = 0;
+			entry.name = filename;
+			entry_len = longname_len = entry.size;
 			toskip -= entry.size;
 			break;
 		case 'K': /* GNU long link target extension - ignored */
@@ -217,6 +224,10 @@ int apk_tar_parse(struct apk_istream *is, apk_archive_entry_parser parser,
 		case 'g': /* global pax header */
 			break;
 		case 'x': /* file specific pax header */
+			if (entry.size > 256*1024) {
+				r = -APKE_V2PKG_FORMAT;
+				goto err;
+			}
 			paxlen = entry.size;
 			if ((r = blob_realloc(&pax, (paxlen + 511) & -512)) != 0 ||
 			    (r = apk_istream_read(is, pax.ptr, paxlen)) < 0)
@@ -227,14 +238,13 @@ int apk_tar_parse(struct apk_istream *is, apk_archive_entry_parser parser,
 			break;
 		}
 
-		size_t entry_len = strnlen(entry.name, PATH_MAX);
-		if (entry_len >= PATH_MAX-10 ||
-		    (entry.link_target && strnlen(entry.link_target, PATH_MAX) >= PATH_MAX-10)) {
-			r = -ENAMETOOLONG;
-			goto err;
-		}
-
 		if (entry.mode & S_IFMT) {
+			/* Apply pax header just before callback as it modifies entry to have heap pointers */
+			if (paxlen) {
+				r = handle_extended_header(&entry, APK_BLOB_PTR_LEN(pax.ptr, paxlen), &entry_len);
+				if (r < 0) goto err;
+				apk_fileinfo_hash_xattr(&entry, APK_DIGEST_SHA1);
+			}
 			if (apk_fs_is_malicious_pathname(APK_BLOB_PTR_LEN((char*) entry.name, entry_len))) {
 				r = -APKE_FORMAT_INVALID;
 				goto err;
@@ -244,9 +254,9 @@ int apk_tar_parse(struct apk_istream *is, apk_archive_entry_parser parser,
 			if (r != 0) goto err;
 			apk_istream_close(&segment.is);
 
-			entry.name = buf.name;
 			toskip -= entry.size;
 			paxlen = 0;
+			longname_len = 0;
 		}
 
 		if (toskip && (r = apk_istream_skip(is, toskip)) < 0)
@@ -266,7 +276,6 @@ err:
 	if (r >= 0) r = -APKE_EOF;
 ok:
 	free(pax.ptr);
-	free(longname.ptr);
 	apk_xattr_array_free(&entry.xattrs);
 	return apk_istream_close_error(is, r);
 }
