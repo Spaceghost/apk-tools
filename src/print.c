@@ -236,7 +236,7 @@ void apk_out_progress_note(struct apk_out *out, const char *format, ...)
 {
 	char buf[512];
 	va_list va;
-	int n, width = apk_out_get_width(out);
+	int n, width;
 	FILE *f = out->out;
 
 	if (out->progress == APK_NO) return;
@@ -251,6 +251,7 @@ void apk_out_progress_note(struct apk_out *out, const char *format, ...)
 	va_start(va, format);
 	n = vsnprintf(buf, sizeof buf, format, va);
 	va_end(va);
+	width = min(apk_out_get_width(out), sizeof buf);
 	if (n >= width-4) strcpy(&buf[width-7], "...");
 	fprintf(f, "\e7[%s]", buf);
 	fflush(f);
