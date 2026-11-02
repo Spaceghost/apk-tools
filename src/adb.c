@@ -564,6 +564,8 @@ int adb_ro_cmpobj(const struct adb_obj *tmpl, const struct adb_obj *obj, unsigne
 	assert(schema == tmpl->schema);
 
 	uint32_t num_fields = max(adb_ro_num(tmpl), adb_ro_num(obj));
+	if (schema->kind == ADB_KIND_OBJECT && num_fields > schema->num_fields)
+		num_fields = schema->num_fields;
 	for (int i = ADBI_FIRST; i < num_fields; i++) {
 		is_set = adb_ro_val(tmpl, i) != ADB_VAL_NULL;
 		if (mode == ADB_OBJCMP_EXACT || is_set) {
@@ -586,6 +588,7 @@ int adb_ro_cmp(const struct adb_obj *tmpl, const struct adb_obj *obj, unsigned i
 	assert(schema == tmpl->schema);
 
 	const uint8_t *kind = adb_ro_kind(obj, i);
+	if (!kind) return 0;
 	switch (*kind) {
 	case ADB_KIND_BLOB:
 	case ADB_KIND_NUMERIC:
