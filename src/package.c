@@ -561,12 +561,19 @@ void apk_pkgtmpl_from_adb(struct apk_package_tmpl *tmpl, struct adb_obj *pkginfo
 	struct adb_obj obj;
 	struct apk_package *pkg = &tmpl->pkg;
 	apk_blob_t uid;
+	apk_blob_t pkgname = adb_ro_blob(pkginfo, ADBI_PI_NAME);
+	apk_blob_t pkgver = adb_ro_blob(pkginfo, ADBI_PI_VERSION);
+
+	if (apk_pkg_name_validate(pkgname) < 0 || !apk_version_validate(pkgver)) {
+		pkg->name = NULL;
+		return;
+	}
 
 	uid = adb_ro_blob(pkginfo, ADBI_PI_HASHES);
 	if (uid.len >= APK_DIGEST_LENGTH_SHA1) apk_digest_from_blob(&tmpl->id, uid);
 
-	pkg->name = apk_db_get_name(db, adb_ro_blob(pkginfo, ADBI_PI_NAME));
-	pkg->version = apk_atomize_dup(&db->atoms, adb_ro_blob(pkginfo, ADBI_PI_VERSION));
+	pkg->name = apk_db_get_name(db, pkgname);
+	pkg->version = apk_atomize_dup(&db->atoms, pkgver);
 	pkg->description = apk_atomize_dup(&db->atoms, apk_blob_truncate(adb_ro_blob(pkginfo, ADBI_PI_DESCRIPTION), 512));
 	pkg->url = apk_atomize_dup(&db->atoms, adb_ro_blob(pkginfo, ADBI_PI_URL));
 	pkg->license = apk_atomize_dup(&db->atoms, adb_ro_blob(pkginfo, ADBI_PI_LICENSE));
@@ -892,6 +899,15 @@ int apk_pkg_write_index_entry(struct apk_package *pkg, struct apk_ostream *os)
 	int r = apk_pkg_write_index_header(pkg, os);
 	if (r < 0) return r;
 	return apk_ostream_write(os, "\n", 1);
+}
+
+int apk_pkg_name_validate(apk_blob_t pkgname)
+{
+	// Check invalid first character
+	if (pkgname.len == 0 || !isalnum((uint8_t)pkgname.ptr[0])) return -APKE_PKGNAME_FORMAT;
+	// Shall consist of characters
+	if (apk_blob_spn(pkgname, APK_CTYPE_PACKAGE_NAME, NULL, NULL)) return -APKE_PKGNAME_FORMAT;
+	return 0;
 }
 
 int apk_pkg_version_compare(const struct apk_package *a, const struct apk_package *b)

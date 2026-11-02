@@ -1507,7 +1507,7 @@ static int load_v3index(struct apk_extract_ctx *ectx, struct adb_obj *ndx)
 		}
 	}
 	apk_pkgtmpl_free(&tmpl);
-	if (num_broken) apk_warn(out, "Repository " BLOB_FMT " has %d packages without hash",
+	if (num_broken) apk_warn(out, "Repository " BLOB_FMT " has %d malformed packages",
 		BLOB_PRINTF(repo->url_index_printable), num_broken);
 	return r;
 }

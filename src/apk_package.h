@@ -178,6 +178,8 @@ int apk_ipkg_run_script(struct apk_installed_package *ipkg, struct apk_database 
 int apk_pkg_write_index_header(struct apk_package *pkg, struct apk_ostream *os);
 int apk_pkg_write_index_entry(struct apk_package *pkg, struct apk_ostream *os);
 
+int apk_pkg_name_validate(apk_blob_t pkgname);
+
 int apk_pkg_version_compare(const struct apk_package *a, const struct apk_package *b);
 int apk_pkg_cmp_display(const struct apk_package *a, const struct apk_package *b);
 
