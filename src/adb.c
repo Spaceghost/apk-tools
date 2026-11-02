@@ -977,6 +977,7 @@ adb_val_t adb_w_arr(struct adb_obj *o)
 int adb_wo_fromstring(struct adb_obj *o, apk_blob_t val)
 {
 	adb_wo_reset(o);
+	if (!o->schema->fromstring) return -APKE_ADB_NO_FROMSTRING;
 	return o->schema->fromstring(o, val);
 }
 
