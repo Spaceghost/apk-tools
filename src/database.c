@@ -1192,7 +1192,7 @@ static int apk_db_scriptdb_write(struct apk_database *db, struct apk_installed_p
 {
 	struct apk_package *pkg = ipkg->pkg;
 	struct apk_file_info fi;
-	char filename[256];
+	char filename[NAME_MAX];
 	apk_blob_t bfn;
 	int r, i;
 
@@ -1218,6 +1218,7 @@ static int apk_db_scriptdb_write(struct apk_database *db, struct apk_installed_p
 		apk_blob_push_blob(&bfn, APK_BLOB_STR("."));
 		apk_blob_push_blob(&bfn, APK_BLOB_STR(apk_script_types[i]));
 		apk_blob_push_blob(&bfn, APK_BLOB_PTR_LEN("", 1));
+		if (APK_BLOB_IS_NULL(bfn)) continue;
 
 		r = apk_tar_write_entry(os, &fi, ipkg->script[i].ptr);
 		if (r < 0) {
