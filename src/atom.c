@@ -41,17 +41,15 @@ void apk_atom_free(struct apk_atom_pool *atoms)
 
 apk_blob_t *apk_atomize_dup(struct apk_atom_pool *atoms, apk_blob_t blob)
 {
-	struct apk_atom_hashnode *atom;
-	unsigned long hash = apk_hash_from_key(&atoms->hash, blob);
-	char *ptr;
-
 	if (blob.len <= 0 || !blob.ptr) return &apk_atom_null;
 
-	atom = (struct apk_atom_hashnode *) apk_hash_get_hashed(&atoms->hash, blob, hash);
+	unsigned long hash = apk_hash_from_key(&atoms->hash, blob);
+
+	struct apk_atom_hashnode *atom = (struct apk_atom_hashnode *) apk_hash_get_hashed(&atoms->hash, blob, hash);
 	if (atom) return &atom->blob;
 
 	atom = apk_balloc_new_extra(atoms->ba, struct apk_atom_hashnode, blob.len);
-	ptr = (char*) (atom + 1);
+	char *ptr = (char*) (atom + 1);
 	memcpy(ptr, blob.ptr, blob.len);
 	atom->blob = APK_BLOB_PTR_LEN(ptr, blob.len);
 	apk_hash_insert_hashed(&atoms->hash, atom, hash);
