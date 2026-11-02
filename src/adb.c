@@ -1097,13 +1097,15 @@ static int wacmp(const void *p1, const void *p2, void *arg)
 	return adb_ro_cmpobj(&o1, &o2, wp->mode);
 }
 
+static struct apk_trust adb_trust_unverified = { .allow_untrusted = 1 };
+
 static int wadbcmp(const void *p1, const void *p2, void *arg)
 {
 	struct wacmp_param *wp = arg;
 	struct adb a1, a2;
 	struct adb_obj o1, o2;
-	adb_m_blob(&a1, adb_r_blob(wp->db1, *(adb_val_t *)p1), 0);
-	adb_m_blob(&a2, adb_r_blob(wp->db2, *(adb_val_t *)p2), 0);
+	adb_m_blob(&a1, adb_r_blob(wp->db1, *(adb_val_t *)p1), &adb_trust_unverified);
+	adb_m_blob(&a2, adb_r_blob(wp->db2, *(adb_val_t *)p2), &adb_trust_unverified);
 	adb_r_rootobj(&a1, &o1, wp->schema);
 	adb_r_rootobj(&a2, &o2, wp->schema);
 	return adb_ro_cmpobj(&o1, &o2, wp->mode);
@@ -1371,6 +1373,7 @@ int adb_trust_verify_signature(struct apk_trust *trust, struct adb *db, struct a
 	struct adb_sign_v0 *sig0;
 	apk_blob_t md;
 
+	if (!trust) return -APKE_SIGNATURE_UNTRUSTED;
 	if (APK_BLOB_IS_NULL(db->adb)) return -APKE_ADB_BLOCK;
 	if (sigb.len < sizeof(struct adb_sign_hdr)) return -APKE_ADB_SIGNATURE;
 
