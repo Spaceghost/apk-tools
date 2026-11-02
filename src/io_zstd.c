@@ -185,7 +185,7 @@ static int zo_close(struct apk_ostream *output)
 	free(os);
 
 	if (rc) return rc;
-	if (ZSTD_isError(rem)) return 1;
+	if (ZSTD_isError(rem)) return -EIO;
 
 	return r;
 }

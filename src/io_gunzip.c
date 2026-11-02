@@ -227,6 +227,7 @@ static int gzo_close(struct apk_ostream *os)
 		if (apk_ostream_write(gos->output, buffer, have) < 0)
 			break;
 	} while (r == Z_OK);
+	if (r != Z_STREAM_END && r != Z_OK && !rc) rc = -EIO;
 	r = apk_ostream_close(gos->output);
 	deflateEnd(&gos->zs);
 	free(gos);
