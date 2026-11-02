@@ -1346,6 +1346,7 @@ const char *apk_url_local_file(const char *url, size_t maxlen)
 	if (maxlen >= 5 && strncmp(url, "file:", 5) == 0) return &url[5];
 	if (maxlen >= 5 && strncmp(url, "test:", 5) == 0) return &url[5];
 	for (size_t i = 0; i < min(10UL, maxlen) - 2; i++)  {
+		if (url[i] == 0) break;
 		if (url[i] != ':') continue;
 		if (url[i+1] == '/' && url[i+2] == '/') return NULL;
 		break;
