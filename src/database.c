@@ -1480,15 +1480,16 @@ static int load_v3index(struct apk_extract_ctx *ectx, struct adb_obj *ndx)
 	apk_blob_t pkgname_spec;
 	int i, r = 0, num_broken = 0;
 
-	apk_pkgtmpl_init(&tmpl, db);
-
 	repo->description = *apk_atomize_dup(&db->atoms, adb_ro_blob(ndx, ADBI_NDX_DESCRIPTION));
 	pkgname_spec = adb_ro_blob(ndx, ADBI_NDX_PKGNAME_SPEC);
 	if (!APK_BLOB_IS_NULL(pkgname_spec)) {
+		r = apk_pkg_subst_validate(pkgname_spec);
+		if (r < 0) return r;
 		repo->pkgname_spec = *apk_atomize_dup(&db->atoms, pkgname_spec);
 		repo->absolute_pkgname = apk_blob_contains(pkgname_spec, APK_BLOB_STRLIT("://")) >= 0;
 	}
 
+	apk_pkgtmpl_init(&tmpl, db);
 	adb_ro_obj(ndx, ADBI_NDX_PACKAGES, &pkgs);
 	for (i = ADBI_FIRST; i <= adb_ra_num(&pkgs); i++) {
 		adb_ro_obj(&pkgs, i, &pkginfo);
@@ -1505,7 +1506,6 @@ static int load_v3index(struct apk_extract_ctx *ectx, struct adb_obj *ndx)
 			break;
 		}
 	}
-
 	apk_pkgtmpl_free(&tmpl);
 	if (num_broken) apk_warn(out, "Repository " BLOB_FMT " has %d packages without hash",
 		BLOB_PRINTF(repo->url_index_printable), num_broken);

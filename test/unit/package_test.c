@@ -36,6 +36,18 @@ APK_TEST(blob_subst) {
 	assert_int_equal(20, apk_blob_subst(buf, sizeof buf, APK_BLOB_STRLIT("${name:8}/${name}-${version}.apk"), apk_pkg_subst, pkg));
 	assert_string_equal(buf, "test/test-1.0-r0.apk");
 
+	assert_int_equal(4, apk_blob_subst(buf, sizeof buf, APK_BLOB_STRLIT("${name:4}"), apk_pkg_subst, pkg));
+	assert_string_equal(buf, "test");
+
+	assert_int_equal(4, apk_blob_subst(buf, sizeof buf, APK_BLOB_STRLIT("${name:256}"), apk_pkg_subst, pkg));
+	assert_string_equal(buf, "test");
+	assert_int_equal(-APKE_FORMAT_INVALID, apk_blob_subst(buf, sizeof buf, APK_BLOB_STRLIT("${name:18446744073709551360}"), apk_pkg_subst, pkg));
+
+	char small[8];
+	assert_int_equal(4, apk_blob_subst(small, sizeof small, APK_BLOB_STRLIT("${name:7}"), apk_pkg_subst, pkg));
+	assert_string_equal(small, "test");
+	assert_int_equal(-APKE_FORMAT_INVALID, apk_blob_subst(small, sizeof small, APK_BLOB_STRLIT("${name:9}"), apk_pkg_subst, pkg));
+
 	assert_int_equal(apk_blob_subst(buf, sizeof buf, APK_BLOB_STRLIT("${invalid}"), apk_pkg_subst, pkg), -APKE_PACKAGE_NAME_SPEC);
 	assert_int_equal(apk_blob_subst(buf, sizeof buf, APK_BLOB_STRLIT("${hash:8s}"), apk_pkg_subst, pkg), -APKE_FORMAT_INVALID);
 }
@@ -49,4 +61,6 @@ APK_TEST(pkg_subst_validate) {
 
 	assert_int_equal(-APKE_PACKAGE_NAME_SPEC, apk_pkg_subst_validate(APK_BLOB_STRLIT("${arch}/${name}=${version}.apk")));
 	assert_int_equal(-APKE_PACKAGE_NAME_SPEC, apk_pkg_subst_validate(APK_BLOB_STRLIT("${arch}_${name}_${version}.apk")));
+	assert_int_equal(-APKE_PACKAGE_NAME_SPEC, apk_pkg_subst_validate(APK_BLOB_STRLIT("${name}")));
+	assert_int_equal(-APKE_PACKAGE_NAME_SPEC, apk_pkg_subst_validate(APK_BLOB_STRLIT("${name:18446744073709551360}-${version}.apk")));
 }

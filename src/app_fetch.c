@@ -97,6 +97,7 @@ static time_t parse_time(const char *timestr)
 static int fetch_parse_option(void *ctx, struct apk_ctx *ac, int opt, const char *optarg)
 {
 	struct fetch_ctx *fctx = (struct fetch_ctx *) ctx;
+	struct apk_out *out = &ac->out;
 
 	switch (opt) {
 	case APK_OPTIONS_INIT:
@@ -111,6 +112,10 @@ static int fetch_parse_option(void *ctx, struct apk_ctx *ac, int opt, const char
 		break;
 	case OPT_FETCH_pkgname_spec:
 		fctx->pkgname_spec = APK_BLOB_STR(optarg);
+		if (apk_pkg_subst_validate(fctx->pkgname_spec) < 0) {
+			apk_err(out, "invalid package name specification '%s'", optarg);
+			return -APKE_PACKAGE_NAME_SPEC;
+		}
 		break;
 	case OPT_FETCH_stdout:
 		fctx->flags |= FETCH_STDOUT;

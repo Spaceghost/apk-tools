@@ -115,7 +115,7 @@ int apk_pkg_subst(void *ctx, apk_blob_t key, apk_blob_t *to)
 
 int apk_pkg_subst_validate(apk_blob_t fmt)
 {
-	char buf[1024];
+	char buf[PATH_MAX];
 	struct apk_name *name = alloca(sizeof(struct apk_name) + 5);
 	struct apk_package *pkg = alloca(sizeof(struct apk_package));
 	int r;
@@ -130,7 +130,7 @@ int apk_pkg_subst_validate(apk_blob_t fmt)
 		.digest_alg = APK_DIGEST_NONE,
 	};
 	r = apk_blob_subst(buf, sizeof buf, fmt, apk_pkg_subst, pkg);
-	if (r < 0) return r;
+	if (r < 0) return -APKE_PACKAGE_NAME_SPEC;
 
 	// Validate that the final filename piece starts with ${name}[_-.]
 	// so the reverse mapping code from filename to package works.

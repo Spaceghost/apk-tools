@@ -68,6 +68,10 @@ static int mkndx_parse_option(void *ctx, struct apk_ctx *ac, int optch, const ch
 	case OPT_MKNDX_filter_spec:
 		ictx->filter_spec = APK_BLOB_STR(optarg);
 		ictx->filter_spec_set = 1;
+		if (apk_pkg_subst_validate(ictx->filter_spec) < 0) {
+			apk_err(out, "invalid filter specification '%s'", optarg);
+			return -APKE_PACKAGE_NAME_SPEC;
+		}
 		break;
 	case OPT_MKNDX_hash:
 		ictx->hash_alg = apk_digest_alg_by_str(optarg);
@@ -85,6 +89,10 @@ static int mkndx_parse_option(void *ctx, struct apk_ctx *ac, int optch, const ch
 	case OPT_MKNDX_pkgname_spec:
 		ictx->pkgname_spec = APK_BLOB_STR(optarg);
 		ictx->pkgname_spec_set = 1;
+		if (apk_pkg_subst_validate(ictx->pkgname_spec) < 0) {
+			apk_err(out, "invalid package name specification '%s'", optarg);
+			return -APKE_PACKAGE_NAME_SPEC;
+		}
 		break;
 	case OPT_MKNDX_rewrite_arch:
 		apk_err(out, "--rewrite-arch is removed, use instead: --pkgname-spec '%s/${name}-${version}.apk'", optarg);
