@@ -61,6 +61,8 @@ bool apk_fs_is_malicious_pathname(apk_blob_t path);
 
 int apk_fs_extract(struct apk_ctx *, const struct apk_file_info *, struct apk_istream *, unsigned int, apk_blob_t);
 
+void apk_fs_flush_cache(struct apk_ctx *ac, bool free_cache);
+
 void apk_fsdir_get(struct apk_fsdir *, apk_blob_t dir, unsigned int extract_flags, struct apk_ctx *ac, apk_blob_t pkgctx);
 
 static inline uint8_t apk_fsdir_priority(struct apk_fsdir *fs) {

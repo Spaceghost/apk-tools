@@ -2372,6 +2372,7 @@ void apk_db_close(struct apk_database *db)
 {
 	struct apk_installed_package *ipkg, *ipkgn;
 
+	apk_fs_flush_cache(db->ctx, true);
 	list_for_each_entry_safe(ipkg, ipkgn, &db->installed.packages, installed_pkgs_list)
 		apk_pkg_uninstall(NULL, ipkg->pkg);
 	apk_protected_path_array_free(&db->protected_paths);
@@ -2537,6 +2538,8 @@ int apk_db_run_script(struct apk_database *db, const char *hook_type, const char
 	r = apk_process_run(&p);
 err:
 	apk_array_truncate(ac->script_environment, env_size_save);
+	apk_fs_flush_cache(db->ctx, false);
+	apk_id_cache_reset(db->id_cache);
 	return r;
 }
 

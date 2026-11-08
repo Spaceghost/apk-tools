@@ -808,9 +808,6 @@ int apk_ipkg_run_script(struct apk_installed_package *ipkg,
 		PKG_VER_PRINTF(pkg), apk_script_types[type]);
 	if (apk_db_run_script(db, apk_script_types[type], pkg->name->name, fd, argv, db->indent_level ? "  * " : "* " ) < 0)
 		goto err;
-
-	/* Script may have done something that changes id cache contents */
-	apk_id_cache_reset(db->id_cache);
 	goto cleanup;
 
 err_errno:

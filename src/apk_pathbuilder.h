@@ -16,7 +16,7 @@ struct apk_pathbuilder {
 };
 
 int apk_pathbuilder_pushb(struct apk_pathbuilder *pb, apk_blob_t b);
-void apk_pathbuilder_pop(struct apk_pathbuilder *pb, int);
+void apk_pathbuilder_pop(struct apk_pathbuilder *pb, int pos);
 
 
 static inline int apk_pathbuilder_setb(struct apk_pathbuilder *pb, apk_blob_t b)
@@ -33,6 +33,12 @@ static inline int apk_pathbuilder_push(struct apk_pathbuilder *pb, const char *n
 static inline const char *apk_pathbuilder_cstr(const struct apk_pathbuilder *pb)
 {
 	return pb->name;
+}
+
+static inline const char *apk_pathbuilder_name(const struct apk_pathbuilder *pb, int pos)
+{
+	// 'pos' points at the pushed separator; skip it unless at root
+	return pb->name + pos + (pos > 0);
 }
 
 static inline apk_blob_t apk_pathbuilder_get(const struct apk_pathbuilder *pb)

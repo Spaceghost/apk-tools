@@ -42,6 +42,7 @@ void apk_ctx_init(struct apk_ctx *ac)
 
 void apk_ctx_free(struct apk_ctx *ac)
 {
+	apk_fs_flush_cache(ac, true);
 	if (ac->protected_paths) apk_istream_close(ac->protected_paths);
 	apk_digest_ctx_free(&ac->dctx);
 	apk_id_cache_free(&ac->id_cache);
