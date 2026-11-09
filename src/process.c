@@ -110,27 +110,44 @@ static uint8_t *sanitize_prefix(uint8_t *pos, uint8_t *end)
 	}
 }
 
-static int buf_process(struct buf *b, int fd, struct apk_out *out, const char *prefix, struct apk_process *p)
+static void buf_emit(struct apk_process *p, struct buf *b, struct apk_out *out, const char *prefix, uint8_t *pos, uint8_t *end)
 {
-	ssize_t n = read(fd, &b->buf[b->len], sizeof b->buf - b->len);
-	if (n > 0) b->len += n;
+	size_t len = strlen(p->logpfx);
 
-	uint8_t *pos, *lf, *end = &b->buf[b->len];
-	for (pos = b->buf; (lf = memchr(pos, '\n', end - pos)) != NULL; pos = lf + 1) {
-		pos = sanitize_prefix(pos, lf);
-		apk_out_fmt(out, prefix, "%s%.*s", p->logpfx, (int)(lf - pos), pos);
-		p->logpfx = p->linepfx;
-	}
-	if (n > 0) {
-		b->len = end - pos;
-		memmove(b->buf, pos, b->len);
-		return 1;
-	}
-	if (pos != end) {
+	if (b->cont) {
+		if (len && p->logpfx[len-1] == ' ') len--;
+		apk_out_fmt(out, prefix, "%.*s> %.*s", (int)len, p->logpfx, (int)(end - pos), pos);
+	} else {
 		pos = sanitize_prefix(pos, end);
 		apk_out_fmt(out, prefix, "%s%.*s", p->logpfx, (int)(end - pos), pos);
 	}
-	return 0;
+	p->logpfx = p->linepfx;
+}
+
+static int buf_process(struct buf *b, int fd, struct apk_out *out, const char *prefix, struct apk_process *p)
+{
+	ssize_t n = read(fd, &b->buf[b->len], sizeof b->buf - b->len);
+	if (n <= 0) {
+		if (n < 0 && (errno == EINTR || errno == EWOULDBLOCK)) return 1;
+		if (b->len) buf_emit(p, b, out, prefix, b->buf, &b->buf[b->len]);
+		return 0;
+	}
+
+	uint8_t *pos, *lf, *end = &b->buf[b->len + n];
+	for (pos = b->buf; (lf = memchr(pos, '\n', end - pos)) != NULL; pos = lf + 1) {
+		buf_emit(p, b, out, prefix, pos, lf);
+		b->cont = 0;
+	}
+	b->len = end - pos;
+
+	if (b->len == sizeof b->buf) {
+		buf_emit(p, b, out, prefix, pos, end);
+		b->len = 0;
+		b->cont = 1;
+	} else {
+		memmove(b->buf, pos, b->len);
+	}
+	return 1;
 }
 
 pid_t apk_process_fork(struct apk_process *p)

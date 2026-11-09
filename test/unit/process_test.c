@@ -6,7 +6,7 @@
 #include "apk_process.h"
 #include "apk_io.h"
 
-#define writestr(fd, str) write(fd, str, sizeof(str)-1)
+#define writestr(fd, str) do { if (write(fd, str, sizeof(str)-1) != sizeof(str)-1) exit(100); } while (0)
 
 APK_TEST(pid_logging) {
 	struct test_out to;
@@ -32,6 +32,41 @@ APK_TEST(pid_logging) {
 
 		"test0: hello1\n"
 		"test0: hello2\n");
+}
+
+APK_TEST(pid_long_lines) {
+	static const char prefix[] = "test4: ";
+	static const char cont_prefix[] = "test4:> ";
+	char expected[4096], *exp = expected;
+	struct test_out to;
+	struct apk_process p;
+	const int buf_size = sizeof p.buf_stdout.buf;
+
+	test_out_open(&to);
+	assert_int_equal(0, apk_process_init(&p, "test4", prefix, &to.out, NULL));
+	if (apk_process_fork(&p) == 0) {
+		char line[2 * buf_size + 12];
+		memset(line, 'x', sizeof line);
+		line[sizeof line - 2] = '\n';
+		line[sizeof line - 1] = 0;
+		writestr(STDOUT_FILENO, line);
+		usleep(100000);
+		writestr(STDOUT_FILENO, "short\n");
+		exit(0);
+	}
+
+	assert_int_equal(0, apk_process_run(&p));
+
+	for (int i = 0; i < 3; i++) {
+		int len = (i < 2) ? buf_size : 10;
+		exp = stpcpy(exp, (i > 0) ? cont_prefix : prefix);
+		memset(exp, 'x', len);
+		exp += len;
+		*exp++ = '\n';
+	}
+	exp = stpcpy(exp, prefix);
+	strcpy(exp, "short\n");
+	assert_output_equal(&to, "", expected);
 }
 
 APK_TEST(pid_error_exit) {

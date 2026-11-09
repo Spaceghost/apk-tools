@@ -25,7 +25,8 @@ struct apk_process {
 	unsigned int is_eof : 1;
 	struct buf {
 		uint16_t len;
-		uint8_t buf[1022];
+		uint16_t cont : 1;
+		uint8_t buf[1020];
 	} buf_stdout, buf_stderr;
 };
 
