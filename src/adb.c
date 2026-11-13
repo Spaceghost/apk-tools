@@ -1243,33 +1243,34 @@ int adb_c_block_data(struct apk_ostream *os, apk_blob_t hdr, uint64_t size, stru
 {
 	struct adb_block blk = adb_block_init(ADB_BLOCK_DATA, size + hdr.len);
 	size_t padding = adb_block_padding(&blk);
-	int r;
+	int64_t r;
 
 	if (IS_ERR(os)) return PTR_ERR(os);
 	if (IS_ERR(is)) return apk_ostream_cancel(os, PTR_ERR(is));
 
 	r = apk_ostream_write(os, &blk, adb_block_hdrsize(&blk));
-	if (r < 0) return r;
+	if (r < 0) goto fail;
 
 	r = apk_ostream_write(os, hdr.ptr, hdr.len);
-	if (r < 0) return r;
+	if (r < 0) goto fail;
 
 	r = apk_stream_copy(is, os, size, 0);
-	if (r < 0) return r;
+	if (r < 0) goto fail;
 
 	if (padding) {
 		r = apk_ostream_write(os, padding_zeroes, padding);
-		if (r < 0) return r;
+		if (r < 0) goto fail;
 	}
-
 	return apk_istream_close(is);
+fail:
+	return apk_istream_close_error(is, (int)r);
 }
 
 int adb_c_block_copy(struct apk_ostream *os, struct adb_block *b, struct apk_istream *is, struct adb_verify_ctx *vfy)
 {
 	uint64_t blk_sz = adb_block_length(b);
 	size_t padding = adb_block_padding(b);
-	int r;
+	int64_t r;
 
 	r = apk_ostream_write(os, b, adb_block_hdrsize(b));
 	if (r < 0) return r;

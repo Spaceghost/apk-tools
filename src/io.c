@@ -670,7 +670,7 @@ int64_t apk_stream_copy(struct apk_istream *is, struct apk_ostream *os, uint64_t
 	while (done < size) {
 		r = apk_istream_get_max(is, min(size - done, SSIZE_MAX), &d);
 		if (r < 0) {
-			if (r == -APKE_EOF && size == APK_IO_ALL) break;
+			if (r == -APKE_EOF && size == (uint64_t)-1) break;
 			apk_ostream_cancel(os, r);
 			return r;
 		}
