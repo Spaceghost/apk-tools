@@ -180,14 +180,12 @@ static int zo_close(struct apk_ostream *output)
 			break;
 	} while (rem != 0);
 
-	r = apk_ostream_close(os->output);
+	if (ZSTD_isError(rem) && !rc) rc = -EIO;
+	r = apk_ostream_close_error(os->output, rc);
 	ZSTD_freeCCtx(os->ctx);
 	free(os);
 
-	if (rc) return rc;
-	if (ZSTD_isError(rem)) return -EIO;
-
-	return r;
+	return rc ?: r;
 }
 
 static const struct apk_ostream_ops zstd_ostream_ops = {
