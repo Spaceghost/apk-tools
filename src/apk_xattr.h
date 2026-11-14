@@ -28,3 +28,12 @@ static inline ssize_t apk_flistxattr(int fd, char *namebuf, size_t size)
 	return flistxattr(fd, namebuf, size);
 #endif
 }
+
+static inline int apk_fremovexattr(int fd, const char *name)
+{
+#ifdef __APPLE__
+	return fremovexattr(fd, name, 0);
+#else
+	return fremovexattr(fd, name);
+#endif
+}

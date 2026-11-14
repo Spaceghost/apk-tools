@@ -96,7 +96,7 @@ static int uvol_file_control(struct apk_fsdir *d, apk_blob_t filename, int ctrl)
 	apk_pathbuilder_setb(&pb, filename);
 	uvol_name = apk_pathbuilder_cstr(&pb);
 
-	switch (ctrl) {
+	switch (ctrl & ~APK_FS_CTRL_CLEAR_MASK) {
 	case APK_FS_CTRL_COMMIT:
 		return uvol_run(ac, "up", uvol_name, 0, 0);
 	case APK_FS_CTRL_APKNEW:

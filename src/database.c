@@ -2957,6 +2957,12 @@ static int apk_db_audit_file(struct apk_fsdir *d, apk_blob_t filename, struct ap
 	return 0;
 }
 
+static int apk_db_file_ctrl(struct apk_db_file *file)
+{
+	if (!file) return 0;
+	return ((file->acl->mode & 07000) ? APK_FS_CTRL_CLEAR_MODE : 0) |
+		((file->acl->xattr_hash_len != 0) ? APK_FS_CTRL_CLEAR_XATTRS : 0);
+}
 
 struct fileid {
 	dev_t dev;
@@ -3010,7 +3016,7 @@ static void apk_db_purge_pkg(struct apk_database *db, struct apk_installed_packa
 			bool do_delete = !fileids || !fileid_get(&d, key.filename, &id) ||
 				apk_array_bsearch(fileids, fileid_cmp, &id) == NULL;
 			if (do_delete && (dirclean || apk_db_audit_file(&d, key.filename, file) == 0))
-				apk_fsdir_file_control(&d, key.filename, ctrl);
+				apk_fsdir_file_control(&d, key.filename, ctrl | apk_db_file_ctrl(file));
 			if (delapknew)
 				apk_fsdir_file_control(&d, key.filename, APK_FS_CTRL_DELETE_APKNEW);
 			apk_dbg2(out, DIR_FILE_FMT "%s", DIR_FILE_PRINTF(diri->dir, file), do_delete ? "" : " (not removing)");
@@ -3091,7 +3097,7 @@ static uint8_t apk_db_migrate_files_for_priority(struct apk_database *db,
 				}
 
 				// Commit changes
-				r = apk_fsdir_file_control(&d, key.filename, ctrl);
+				r = apk_fsdir_file_control(&d, key.filename, ctrl | apk_db_file_ctrl(ofile));
 				if (r < 0) {
 					apk_err(out, PKG_VER_FMT": failed to commit " DIR_FILE_FMT ": %s",
 						PKG_VER_PRINTF(ipkg->pkg),

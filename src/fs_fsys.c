@@ -176,21 +176,39 @@ static int fsys_file_extract(struct apk_ctx *ac, const struct apk_file_info *fi,
 	return ret;
 }
 
+static int fsys_file_pin(int atfd, const char *pathname, int ctrl)
+{
+	if (!(ctrl & APK_FS_CTRL_CLEAR_MASK)) return -1;
+	return openat(atfd, pathname, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+}
+
+static void fsys_file_clear_and_unpin(int fd, int ctrl)
+{
+	if (fd < 0) return;
+	if (ctrl & APK_FS_CTRL_CLEAR_MODE) fchmod(fd, 0600);
+#ifdef __linux__
+	// Linux specific xattr allowing gaining capabilities
+	if (ctrl & APK_FS_CTRL_CLEAR_XATTRS) apk_fremovexattr(fd, "security.capability");
+#endif
+	close(fd);
+}
+
 static int fsys_file_control(struct apk_fsdir *d, apk_blob_t filename, int ctrl)
 {
 	struct apk_ctx *ac = d->ac;
 	char tmpname[TMPNAME_MAX], apknewname[TMPNAME_MAX];
 	const char *fn;
-	int n, rc = 0, atfd = apk_ctx_fd_dest(d->ac);
+	int n, rc = 0, pinfd = -1, atfd = apk_ctx_fd_dest(d->ac);
 	apk_blob_t dirname = apk_pathbuilder_get(&d->pb);
 
 	n = apk_pathbuilder_pushb(&d->pb, filename);
 	if (n < 0) return n;
 	fn = apk_pathbuilder_cstr(&d->pb);
 
-	switch (ctrl) {
+	switch (ctrl & ~APK_FS_CTRL_CLEAR_MASK) {
 	case APK_FS_CTRL_COMMIT:
 		// rename tmpname -> realname
+		pinfd = fsys_file_pin(atfd, fn, ctrl);
 		if (renameat(atfd, format_tmpname(&ac->dctx, d->pkgctx, dirname, apk_pathbuilder_get(&d->pb), tmpname),
 			     atfd, fn) < 0) {
 			rc = -errno;
@@ -212,6 +230,7 @@ static int fsys_file_control(struct apk_fsdir *d, apk_blob_t filename, int ctrl)
 		break;
 	case APK_FS_CTRL_DELETE:
 		// unlink realname
+		pinfd = fsys_file_pin(atfd, fn, ctrl);
 		if (unlinkat(atfd, fn, 0) < 0)
 			rc = -errno;
 		break;
@@ -225,7 +244,7 @@ static int fsys_file_control(struct apk_fsdir *d, apk_blob_t filename, int ctrl)
 		rc = -ENOSYS;
 		break;
 	}
-
+	fsys_file_clear_and_unpin(pinfd, (rc < 0) ? 0 : ctrl);
 	apk_pathbuilder_pop(&d->pb, n);
 	return rc;
 }

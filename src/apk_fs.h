@@ -21,6 +21,11 @@
 #define APK_FS_CTRL_DELETE		4
 #define APK_FS_CTRL_DELETE_APKNEW	5
 
+// Flags OR'ed with above APK_FS_CTRL_* functions
+#define APK_FS_CTRL_CLEAR_MODE		0x0100
+#define APK_FS_CTRL_CLEAR_XATTRS	0x0200
+#define APK_FS_CTRL_CLEAR_MASK		(APK_FS_CTRL_CLEAR_MODE | APK_FS_CTRL_CLEAR_XATTRS)
+
 #define APK_FS_DIR_MODIFIED	1
 
 struct apk_fsdir_ops;
