@@ -2,6 +2,7 @@
 
 # Checks that setuid/setgid is cleared from the inode of a file that gets replaced or removed.
 
+REQUIRE_FAKEROOT=yes
 TESTDIR=$(realpath "${TESTDIR:-"$(dirname "$0")"/..}")
 . "$TESTDIR"/testlib.sh
 
@@ -19,17 +20,11 @@ create_pkg() {
 setup_apkroot
 APK="$APK --allow-untrusted --no-interactive"
 
-fixup_setsuid() {
-	# usermode does not set suid/sgid bits, set them manually
-	chmod 4755 "$TEST_ROOT"/bin/prog
-}
-
 create_pkg test-a 1.0 4755
 create_pkg test-a 2.0 4755
 create_pkg test-b 1.0 0755
 
 $APK add --initdb $TEST_USERMODE test-a-1.0.apk
-fixup_setsuid
 
 # Replaced file with setuid in the installed db
 cd "$TEST_ROOT"
@@ -42,13 +37,10 @@ $APK add test-a-2.0.apk
 cd "$TEST_ROOT"
 [ "$(cat bin/prog)" = "prog v2.0" ] || assert "file not upgraded"
 [ ! bin/prog -ef prog.old ] || assert "file was not replaced"
-if [ "$(id -u)" = 0 ]; then
-	[ -u bin/prog ] || assert "setuid cleared from the new file"
-fi
+[ -u bin/prog ] || assert "setuid cleared from the new file"
 [ -u prog.old ] && assert "setuid not cleared from replaced file"
 rm prog.old
 ln bin/prog prog.old
-fixup_setsuid
 cd - > /dev/null
 
 # Removed file with setuid in the installed db
@@ -62,8 +54,7 @@ cd - > /dev/null
 
 # File without setuid in the installed db is not touched
 $APK add $TEST_USERMODE test-b-1.0.apk
-fixup_setsuid
-
+chmod 4755 "$TEST_ROOT"/bin/prog
 cd "$TEST_ROOT"
 ln bin/prog prog.old
 cd - > /dev/null
