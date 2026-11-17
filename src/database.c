@@ -920,10 +920,11 @@ static int apk_db_fdb_read(struct apk_database *db, struct apk_istream *is, int 
 	struct apk_db_acl *acl;
 	struct apk_digest file_digest, xattr_digest;
 	apk_blob_t token = APK_BLOB_STR("\n"), l;
+	int field, r, lineno = 0, duplicate = 0;
+	bool duplicate_warn = false;
 	mode_t mode;
 	uid_t uid;
 	gid_t gid;
-	int field, r, lineno = 0;
 
 	if (IS_ERR(is)) return PTR_ERR(is);
 
@@ -941,7 +942,7 @@ static int apk_db_fdb_read(struct apk_database *db, struct apk_istream *is, int 
 				tmpl.pkg.repos |= BIT(repo);
 			} else if (repo == APK_REPO_CACHE_INSTALLED) {
 				tmpl.pkg.cached_non_repository = 1;
-			} else if (repo == APK_REPO_DB_INSTALLED && ipkg == NULL) {
+			} else if (repo == APK_REPO_DB_INSTALLED && ipkg == NULL && !duplicate) {
 				/* Installed package without files */
 				ipkg = apk_db_ipkg_create(db, &tmpl.pkg);
 			}
@@ -952,6 +953,7 @@ static int apk_db_fdb_read(struct apk_database *db, struct apk_istream *is, int 
 			tmpl.pkg.layer = layer;
 			ipkg = NULL;
 			diri = NULL;
+			duplicate = 0;
 			continue;
 		}
 
@@ -963,8 +965,19 @@ static int apk_db_fdb_read(struct apk_database *db, struct apk_istream *is, int 
 
 		/* Standard index line? */
 		r = apk_pkgtmpl_add_info(&tmpl, field, l);
+		if (repo == APK_REPO_DB_INSTALLED && field == 'C' && r == 0 &&
+		    tmpl.id.len >= APK_DIGEST_LENGTH_SHA1) {
+			/* Check early for duplicated package */
+			struct apk_package *idb = apk_hash_get(&db->available.packages,
+				APK_BLOB_PTR_LEN((char*)tmpl.id.data, APK_DIGEST_LENGTH_SHA1));
+			duplicate = (idb != NULL && idb->ipkg != NULL);
+			if (duplicate && !duplicate_warn) {
+				apk_warn(out, "Duplicate entries in installed database; ignoring them");
+				duplicate_warn = true;
+			}
+		}
 		if (r == 0) continue;
-		if (r == 1 && repo == APK_REPO_DB_INSTALLED && ipkg == NULL) {
+		if (r == 1 && repo == APK_REPO_DB_INSTALLED && ipkg == NULL && !duplicate) {
 			/* Instert to installed database; this needs to
 			 * happen after package name has been read, but
 			 * before first FDB entry. */
