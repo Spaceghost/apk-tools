@@ -1,0 +1,7 @@
+@ARGS add prov req-lt
+@REPO provides-unversioned.repo
+@EXPECT
+ERROR: unable to select packages:
+  prov-1.0-r0:
+    breaks: req-lt-1.0-r0[virt<2.0]
+    satisfies: world[prov]

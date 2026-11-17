@@ -274,6 +274,8 @@ int apk_dep_is_provided(const struct apk_package *deppkg, const struct apk_depen
 	if (p == NULL || p->pkg == NULL) return apk_dep_conflict(dep);
 	if (apk_dep_conflict(dep) && deppkg == p->pkg) return 1;
 	if (dep->op == APK_DEPMASK_CHECKSUM) return apk_dep_match_checksum(dep, p->pkg);
+	if (p->version == &apk_atom_null && (dep->op & APK_DEPMASK_ANY) != APK_DEPMASK_ANY)
+		return apk_dep_conflict(dep);
 	return apk_version_match(*p->version, dep->op, *dep->version);
 }
 

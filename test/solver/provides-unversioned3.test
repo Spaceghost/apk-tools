@@ -1,0 +1,6 @@
+@ARGS add prov req-confl-lt
+@REPO provides-unversioned.repo
+@EXPECT
+(1/2) Installing prov (1.0-r0)
+(2/2) Installing req-confl-lt (1.0-r0)
+OK: 2 B in 2 packages
