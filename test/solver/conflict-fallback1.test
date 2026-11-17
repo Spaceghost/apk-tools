@@ -1,0 +1,6 @@
+@ARGS add p0 p1
+@REPO conflict-fallback.repo
+@EXPECT
+(1/2) Installing p0 (2.0-r0)
+(2/2) Installing p1 (1.2-r0)
+OK: 2 B in 2 packages

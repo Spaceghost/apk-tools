@@ -277,6 +277,7 @@ static void discover_name(struct apk_solver_state *ss, struct apk_name *name)
 static void name_requirers_changed(struct apk_solver_state *ss, struct apk_name *name)
 {
 	queue_unresolved(ss, name, false);
+	reevaluate_reverse_deps(ss, name);
 	reevaluate_reverse_installif(ss, name);
 	queue_dirty(ss, name);
 }
