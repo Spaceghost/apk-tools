@@ -1,0 +1,10 @@
+@ARGS upgrade --available
+@WORLD early postmarketos-ui-phosh
+@REPO conflict-shadow.repo
+@EXPECT
+(1/5) Installing gnome-settings-daemon (50.1-r0)
+(2/5) Installing phosh (99990.55.0-r2)
+(3/5) Installing early (1.0-r0)
+(4/5) Installing postmarketos-ui-phosh (29.1-r0)
+(5/5) Installing webtrigger (1.0-r0)
+OK: 5 B in 5 packages

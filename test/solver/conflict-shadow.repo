@@ -1,0 +1,49 @@
+C:Q1EyN5AdpAOBJWKMR89pp/C66o+OA=
+P:early
+V:1.0-r0
+S:1
+I:1
+D:cmdhelper
+
+C:Q1EyN5AdpAOBJWKMR89pp/C66p+PB=
+P:postmarketos-ui-phosh
+V:29.1-r0
+S:1
+I:1
+D:phosh !gnome-settings-daemon-mobile
+
+C:Q1EyN5AdpAOBJWKMR89pp/C66q+PC=
+P:postmarketos-ui-phosh
+V:25-r2
+S:1
+I:1
+D:phosh !gnome-settings-daemon-mobile
+
+C:Q1EyN5AdpAOBJWKMR89pp/C66r+PD=
+P:phosh
+V:99990.55.0-r2
+S:1
+I:1
+D:gnome-settings-daemon
+p:cmdhelper
+
+C:Q1EyN5AdpAOBJWKMR89pp/C66s+PE=
+P:webtrigger
+V:1.0-r0
+S:1
+I:1
+i:so:libgsd.so postmarketos-ui-phosh
+
+C:Q1EyN5AdpAOBJWKMR89pp/C66t+PF=
+P:gnome-settings-daemon
+V:50.1-r0
+S:1
+I:1
+p:so:libgsd.so=0
+
+C:Q1EyN5AdpAOBJWKMR89pp/C66u+PG=
+P:gnome-settings-daemon-mobile
+V:999948.0-r1
+S:1
+I:1
+p:gnome-settings-daemon=999948.0-r1 so:libgsd.so=0

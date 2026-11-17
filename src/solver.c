@@ -28,6 +28,12 @@
 
 #define ASSERT(cond, fmt...)	if (!(cond)) { apk_error(fmt); *(char*)NULL = 0; }
 
+struct apk_conflict_decl {
+	struct apk_package *pkg;
+	struct apk_dependency *dep;
+};
+APK_ARRAY(apk_conflict_decl_array, struct apk_conflict_decl);
+
 struct apk_solver_state {
 	struct apk_database *db;
 	struct apk_changeset *changeset;
@@ -35,6 +41,7 @@ struct apk_solver_state {
 	struct list_head unresolved_head;
 	struct list_head selectable_head;
 	struct list_head resolvenow_head;
+	struct apk_conflict_decl_array *conflict_decls;
 	unsigned int errors;
 	unsigned int solver_flags_inherit;
 	unsigned int pinning_inherit;
@@ -235,8 +242,13 @@ static void discover_name(struct apk_solver_state *ss, struct apk_name *name)
 				pkg->cached_non_repository ||
 				pkg->ipkg;
 
-			apk_array_foreach(dep, pkg->depends)
+			apk_array_foreach(dep, pkg->depends) {
 				discover_name(ss, dep->name);
+				if (apk_dep_conflict(dep) && !ss->ignore_conflict) {
+					struct apk_conflict_decl decl = { .pkg = pkg, .dep = dep };
+					apk_conflict_decl_array_add(&ss->conflict_decls, decl);
+				}
+			}
 
 			dbg_printf("discover " PKG_VER_FMT ": tag_ok=%d, tag_pref=%d selectable=%d\n",
 				PKG_VER_PRINTF(pkg),
@@ -736,10 +748,46 @@ static void assign_name(struct apk_solver_state *ss, struct apk_name *name, stru
 		reevaluate_reverse_installif(ss, name);
 }
 
+static int conflict_decl_target_cmp(const void *a, const void *b)
+{
+	/* Comparison is by pointer value because only equality is tested. */
+	const struct apk_name *ta = ((const struct apk_conflict_decl *) a)->dep->name;
+	const struct apk_name *tb = ((const struct apk_conflict_decl *) b)->dep->name;
+	if (ta < tb) return -1;
+	if (ta > tb) return 1;
+	return 0;
+}
+
+static bool shadowed_by_pending_conflict(struct apk_solver_state *ss, struct apk_package *pkg)
+{
+	struct apk_dependency keydep = { .name = pkg->name };
+	const struct apk_conflict_decl key = { .dep = &keydep };
+	const struct apk_conflict_decl *base = ss->conflict_decls->item, *decl, *start;
+	struct apk_provider pp = APK_PROVIDER_FROM_PACKAGE(pkg);
+
+	/* Declarations are sorted by target name; find this name's run. */
+	start = apk_array_bsearch(ss->conflict_decls, conflict_decl_target_cmp, &key);
+	if (start == NULL) return false;
+
+	for (decl = start; decl > base && (decl-1)->dep->name == pkg->name; decl--)
+		;
+	for (; decl < base + apk_array_len(ss->conflict_decls) && decl->dep->name == pkg->name; decl++) {
+		struct apk_package *d = decl->pkg;
+		if (d->name == pkg->name) continue;
+		if (!d->ss.pkg_selectable) continue;
+		if (d->name->ss.locked) continue;
+		if (d->name->ss.requirers == 0 && !d->ss.iif_triggered) continue;
+		/* Mirror of the conflict check the declarer would perform. */
+		if (!apk_dep_is_provided(d, decl->dep, &pp)) return true;
+	}
+	return false;
+}
+
 static void select_package(struct apk_solver_state *ss, struct apk_name *name)
 {
 	struct apk_provider chosen = { NULL, &apk_atom_null };
 	struct apk_package *pkg = NULL;
+	bool unshadowed_seen = false;
 
 	dbg_printf("select_package: %s (requirers=%d, autosel=%d, iif=%d, order_id=%#x)\n",
 		name->name, name->ss.requirers, name->ss.has_auto_selectable, name->ss.has_iif, name->ss.order_id);
@@ -763,6 +811,16 @@ static void select_package(struct apk_solver_state *ss, struct apk_name *name)
 			if (!is_provider_auto_selectable(p)) {
 				dbg_printf("    ignore: virtual package without provider_priority\n");
 				continue;
+			}
+			if (shadowed_by_pending_conflict(ss, p->pkg)) {
+				if (unshadowed_seen) {
+					dbg_printf("    shadowed by a pending conflict\n");
+					continue;
+				}
+			} else if (!unshadowed_seen) {
+				dbg_printf("    first unshadowed provider\n");
+				unshadowed_seen = true;
+				chosen = (struct apk_provider){ NULL, &apk_atom_null };
 			}
 			if (compare_providers(ss, p, &chosen) > 0) {
 				dbg_printf("    choose as new provider\n");
@@ -1046,6 +1104,13 @@ static int free_package(apk_hash_item item, void *ctx)
 	return 0;
 }
 
+static void apk_solver_state_cleanup(struct apk_solver_state *ss)
+{
+	apk_conflict_decl_array_free(&ss->conflict_decls);
+	apk_hash_foreach(&ss->db->available.names, free_name, NULL);
+	apk_hash_foreach(&ss->db->available.packages, free_package, NULL);
+}
+
 static int cmp_pkgname(const void *p1, const void *p2)
 {
 	const struct apk_dependency *d1 = p1, *d2 = p2;
@@ -1089,6 +1154,7 @@ restart:
 	ss->changeset = changeset;
 	ss->default_repos = apk_db_get_pinning_mask_repos(db, APK_DEFAULT_PINNING_MASK);
 	ss->ignore_conflict = !!(solver_flags & APK_SOLVERF_IGNORE_CONFLICT);
+	apk_conflict_decl_array_init(&ss->conflict_decls);
 	list_init(&ss->dirty_head);
 	list_init(&ss->unresolved_head);
 	list_init(&ss->selectable_head);
@@ -1110,6 +1176,8 @@ restart:
 	ss->solver_flags_inherit = 0;
 	ss->pinning_inherit = 0;
 	dbg_printf("applying world [finished]\n");
+
+	apk_array_qsort(ss->conflict_decls, conflict_decl_target_cmp);
 
 	do {
 		while (!list_empty(&ss->dirty_head)) {
@@ -1133,8 +1201,7 @@ restart:
 				dbg_printf("disabling broken world dep: %s\n", name->name);
 			}
 		}
-		apk_hash_foreach(&db->available.names, free_name, NULL);
-		apk_hash_foreach(&db->available.packages, free_package, NULL);
+		apk_solver_state_cleanup(ss);
 		goto restart;
 	}
 
@@ -1143,8 +1210,7 @@ restart:
 		d->layer = d->name->ss.chosen.pkg->layer;
 	}
 
-	apk_hash_foreach(&db->available.names, free_name, NULL);
-	apk_hash_foreach(&db->available.packages, free_package, NULL);
+	apk_solver_state_cleanup(ss);
 	dbg_printf("solver done, errors=%d\n", ss->errors);
 
 	return ss->errors;
