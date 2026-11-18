@@ -47,6 +47,7 @@ static int fsys_dir_check(struct apk_fsdir *d, mode_t mode, uid_t uid, gid_t gid
 
 	if (fstatat(apk_ctx_fd_dest(d->ac), apk_pathbuilder_cstr(&d->pb), &st, AT_SYMLINK_NOFOLLOW) != 0)
 		return -errno;
+	if (!S_ISDIR(st.st_mode)) return -ENOTDIR;
 	if ((st.st_mode & 07777) != (mode & 07777) || st.st_uid != uid || st.st_gid != gid)
 		return APK_FS_DIR_MODIFIED;
 	return 0;

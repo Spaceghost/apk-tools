@@ -249,10 +249,14 @@ void apk_db_dir_prepare(struct apk_database *db, struct apk_db_dir *dir, struct 
 
 	apk_fsdir_get(&d, APK_BLOB_PTR_LEN(dir->name, dir->namelen), db->extract_flags, db->ctx, APK_BLOB_NULL);
 	if (!expected_acl) {
-		// Directory unowned in the database: create it, or adopt it by enforcing the new acl.
+		// Directory unowned in the database: create it, or adopt an
+		// existing directory by enforcing the new acl.
 		int r = apk_db_dir_mkdir(db, &d, new_acl);
-		if (r == -EEXIST)
-			r = apk_fsdir_update_perms(&d, apk_db_dir_get_mode(db, new_acl->mode), new_acl->uid, new_acl->gid);
+		if (r == -EEXIST) {
+			r = apk_fsdir_check(&d, apk_db_dir_get_mode(db, new_acl->mode), new_acl->uid, new_acl->gid);
+			if (r == APK_FS_DIR_MODIFIED)
+				r = apk_fsdir_update_perms(&d, apk_db_dir_get_mode(db, new_acl->mode), new_acl->uid, new_acl->gid);
+		}
 		if (r == 0)
 			dir->permissions_ok = 1;
 		return;
