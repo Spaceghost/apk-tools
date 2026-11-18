@@ -66,6 +66,7 @@ static int fix_directory_permissions(apk_hash_item item, void *pctx)
 	struct apk_db_dir *dir = (struct apk_db_dir *) item;
 
 	if (dir->namelen == 0 || !dir->refs) return 0;
+	if (!dir->owner || !dir->owner->pkg) return 0;
 
 	apk_db_dir_prepare(db, dir, dir->owner->acl, dir->owner->acl);
 	if (dir->permissions_ok) return 0;

@@ -249,8 +249,11 @@ void apk_db_dir_prepare(struct apk_database *db, struct apk_db_dir *dir, struct 
 
 	apk_fsdir_get(&d, APK_BLOB_PTR_LEN(dir->name, dir->namelen), db->extract_flags, db->ctx, APK_BLOB_NULL);
 	if (!expected_acl) {
-		/* Directory should not exist. Create it. */
-		if (apk_db_dir_mkdir(db, &d, new_acl) == 0)
+		// Directory unowned in the database: create it, or adopt it by enforcing the new acl.
+		int r = apk_db_dir_mkdir(db, &d, new_acl);
+		if (r == -EEXIST)
+			r = apk_fsdir_update_perms(&d, apk_db_dir_get_mode(db, new_acl->mode), new_acl->uid, new_acl->gid);
+		if (r == 0)
 			dir->permissions_ok = 1;
 		return;
 	}
@@ -901,6 +904,8 @@ int apk_db_read_overlay(struct apk_database *db, struct apk_istream *is)
 		diri = apk_db_diri_get(db, bdir, NULL);
 		if (bfile.len == 0) {
 			diri->dir->created = 1;
+			// Overlay owns explicitly listed dirs, so packages cannot override their permissions
+			apk_db_dir_apply_diri_permissions(db, diri);
 		} else {
 			apk_db_file_get(db, diri, bfile);
 		}
@@ -2943,8 +2948,8 @@ static int apk_db_install_file(struct apk_extract_ctx *ectx, const struct apk_fi
 		diri = apk_db_diri_get(db, name, pkg);
 		diri->acl = apk_db_acl_atomize_digest(db, ae->mode, ae->uid, ae->gid, &ae->xattr_digest);
 		expected_acl = diri->dir->owner ? diri->dir->owner->acl : NULL;
+		apk_db_dir_prepare(db, diri->dir, expected_acl, expected_acl ?: diri->acl);
 		apk_db_dir_apply_diri_permissions(db, diri);
-		apk_db_dir_prepare(db, diri->dir, expected_acl, diri->dir->owner->acl);
 	}
 	ctx->installed_size += apk_calc_installed_size(ae->size);
 	return ret;
