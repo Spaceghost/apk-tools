@@ -410,6 +410,13 @@ Before executing a script, apk will set working directory as _ROOT_ and
 performs a chroot unless *--force-no-chroot* is specified. In either case,
 the script working directory should be treated as the system root.
 
+A script is considered finished only after it has exited and all of its
+standard streams have been closed. Background processes holding the
+standard streams open (e.g. a daemon started with *&*) will thus make
+apk appear to hang. Long-lived processes must be daemonized properly
+instead: new session via *setsid*, standard streams redirected to
+*/dev/null*.
+
 The environment variables defined by APK are the following:
 
 *APK_PACKAGE*

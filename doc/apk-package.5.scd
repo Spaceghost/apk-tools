@@ -281,7 +281,8 @@ Unfortunately it is not possible to deduce if a given string is of format
 	- pre-upgrade <new-version> <old-version>
 	- post-upgrade <new-version> <old-version>
 
-	See also the ENVIRONMENT section in *apk*(8) for the environment variables.
+	See also the ENVIRONMENT section in *apk*(8) for the environment
+	variables and the script execution details.
 
 *triggers*
 	List of directory globs. APK will execute the trigger script with
