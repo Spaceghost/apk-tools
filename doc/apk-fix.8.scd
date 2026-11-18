@@ -33,3 +33,15 @@ following options:
 
 *--xattr*, *-x*
 	Fix packages with broken xattrs.
+
+# EXAMPLES
+
+\# reinstall a single package++
+apk fix musl
+
+\# reset all directory permissions++
+apk fix --directory-permissions
+
+\# reinstall all installed packages, e.g. after file system++
+\# corruption; the star must be quoted to prevent shell expansion++
+apk fix --reinstall '\*'
