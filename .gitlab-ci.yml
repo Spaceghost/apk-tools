@@ -4,7 +4,7 @@ stages:
 
 variables:
   PACKAGE_ENDPOINT: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic"
-  ALPINE_DEPS: "make gcc git scdoc musl-dev linux-headers openssl-dev zlib-dev lua5.3-dev lua5.3-lzlib cmocka-dev python3-dev fakeroot"
+  ALPINE_DEPS: "gcc git scdoc musl-dev linux-headers openssl-dev zlib-dev lua5.3-dev lua5.3-lzlib cmocka-dev python3-dev fakeroot"
   ALPINE_STATIC_DEPS: "zlib-static openssl-libs-static"
   KUBERNETES_CPU_REQUEST: 2
   KUBERNETES_MEMORY_REQUEST: 256Mi
@@ -74,7 +74,7 @@ build:debian:
   stage: build
   script:
     - apt-get update
-    - apt-get install -y make gcc git libssl-dev zlib1g-dev libzstd-dev lua5.3-dev lua5.2 lua-zlib-dev sudo meson
+    - apt-get install -y gcc git libssl-dev zlib1g-dev libzstd-dev lua5.3-dev lua5.2 lua-zlib-dev sudo meson
     - unlink /bin/sh
     - ln -s /bin/bash /bin/sh
     - meson setup build
