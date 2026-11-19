@@ -28,7 +28,8 @@
 #define DIRFD_MAX_LOOPS		40
 
 struct dirfd_resolver {
-	struct dirfd_cache *c;
+	struct apk_dirfd_cache *c;
+	int dest_fd;
 	int loops;
 };
 
@@ -39,21 +40,16 @@ struct dirfd_cache_entry {
 	unsigned int depth;
 };
 
-struct dirfd_cache {
-	struct apk_ctx *ac;
+struct apk_dirfd_cache {
 	unsigned int tick;
 	int nentries;
 	struct dirfd_cache_entry entry[32];
 };
 
-// Temporary tls definition to avoid abi breakage; goes into struct apk_ctx next release.
-static __thread struct dirfd_cache *dirfdcache;
-
 void apk_fs_flush_cache(struct apk_ctx *ac, bool free_cache)
 {
-	struct dirfd_cache *c = dirfdcache;
+	struct apk_dirfd_cache *c = ac->dirfd_cache;
 	if (!c) return;
-	if (free_cache && c->ac && c->ac != ac) return;
 	for (int i = 0; i < c->nentries; i++) {
 		close(c->entry[i].fd);
 		free(c->entry[i].path.ptr);
@@ -61,36 +57,27 @@ void apk_fs_flush_cache(struct apk_ctx *ac, bool free_cache)
 	c->nentries = 0;
 	if (free_cache) {
 		free(c);
-		dirfdcache = NULL;
+		ac->dirfd_cache = NULL;
 	}
 }
 
-static struct dirfd_cache *dirfd_cache_get(struct apk_ctx *ac)
+static struct apk_dirfd_cache *dirfd_cache_get(struct apk_ctx *ac)
 {
-	struct dirfd_cache *c = dirfdcache;
-	struct stat st;
+	struct apk_dirfd_cache *c = ac->dirfd_cache;
 
 	if (!c) {
 		c = calloc(1, sizeof *c);
 		if (!c) return NULL;
-		dirfdcache = c;
-	} else if (c->ac == ac) {
-		return c;
-	} else {
-		apk_fs_flush_cache(ac, false);
+		ac->dirfd_cache = c;
 	}
-	if (fstat(apk_ctx_fd_dest(ac), &st) != 0) {
-		c->ac = NULL;
-		return NULL;
-	}
-	c->ac = ac;
 	return c;
 }
 
 // Seed from the longest cached proper prefix of path; *curpos is set to
 // its length. Exact matches are handled by the caller.
-static int dirfd_cache_seed(struct dirfd_cache *c, apk_blob_t path, int *curpos)
+static int dirfd_cache_seed(struct dirfd_resolver *dr, apk_blob_t path, int *curpos)
 {
+	struct apk_dirfd_cache *c = dr->c;
 	int seedlen = 0;
 	struct dirfd_cache_entry *seed = NULL;
 
@@ -109,10 +96,10 @@ static int dirfd_cache_seed(struct dirfd_cache *c, apk_blob_t path, int *curpos)
 		return seed->fd;
 	}
 	*curpos = 0;
-	return apk_ctx_fd_dest(c->ac);
+	return dr->dest_fd;
 }
 
-static int dirfd_cache_add(struct dirfd_cache *c, apk_blob_t key, int fd)
+static int dirfd_cache_add(struct apk_dirfd_cache *c, apk_blob_t key, int fd)
 {
 	char *path;
 	struct dirfd_cache_entry *e = NULL;
@@ -156,7 +143,7 @@ static int dirfd_cache_add(struct dirfd_cache *c, apk_blob_t key, int fd)
 	return fd;
 }
 
-static int dirfd_cache_lookup(struct dirfd_cache *c, apk_blob_t key)
+static int dirfd_cache_lookup(struct apk_dirfd_cache *c, apk_blob_t key)
 {
 	for (int i = 0; i < c->nentries; i++) {
 		struct dirfd_cache_entry *e = &c->entry[i];
@@ -207,7 +194,7 @@ static int dirfd_walk(struct dirfd_resolver *dr, apk_blob_t path);
 // Shared resolver keeps the symlink loop budget global across nested walks.
 static int dirfd_resolve(struct dirfd_resolver *dr, apk_blob_t key)
 {
-	if (key.len == 0) return apk_ctx_fd_dest(dr->c->ac);
+	if (key.len == 0) return dr->dest_fd;
 
 	int fd = dirfd_cache_lookup(dr->c, key);
 	if (fd >= 0) return fd;
@@ -223,8 +210,8 @@ static int dirfd_resolve(struct dirfd_resolver *dr, apk_blob_t key)
 // a more privileged directory.
 static int dirfd_walk(struct dirfd_resolver *dr, apk_blob_t path)
 {
-	struct dirfd_cache *c = dr->c;
-	int dest_fd = apk_ctx_fd_dest(c->ac);
+	struct apk_dirfd_cache *c = dr->c;
+	int dest_fd = dr->dest_fd;
 	char buf[PATH_MAX];		// walk path, rewritten in place
 	char target[PATH_MAX];		// symlink target, does not alias buf
 	struct dirfd_pending_check pending;
@@ -237,7 +224,7 @@ static int dirfd_walk(struct dirfd_resolver *dr, apk_blob_t path)
 	memcpy(buf, path.ptr, path.len);
 	explen = path.len;
 
-	curfd = dirfd_cache_seed(c, APK_BLOB_PTR_LEN(buf, explen), &curpos);
+	curfd = dirfd_cache_seed(dr, APK_BLOB_PTR_LEN(buf, explen), &curpos);
 	pending.num = 0;
 
 	while (curpos < explen) {
@@ -407,10 +394,10 @@ err:
 
 static int dirfd_cache_resolve(struct apk_ctx *ac, apk_blob_t dir)
 {
-	struct dirfd_cache *c = dirfd_cache_get(ac);
+	struct apk_dirfd_cache *c = dirfd_cache_get(ac);
 	if (!c) return -errno;
 
-	struct dirfd_resolver dr = { .c = c };
+	struct dirfd_resolver dr = { .c = c, .dest_fd = apk_ctx_fd_dest(ac) };
 	return dirfd_resolve(&dr, dir);
 }
 
@@ -421,11 +408,8 @@ static bool dirfd_path_is_or_under(apk_blob_t path, apk_blob_t dir)
 		&& (path.len == dir.len || path.ptr[dir.len] == '/');
 }
 
-static void dirfd_cache_drop(apk_blob_t dir)
+static void dirfd_cache_drop(struct apk_dirfd_cache *c, apk_blob_t dir)
 {
-	struct dirfd_cache *c = dirfdcache;
-	if (!c) return;
-
 	for (int i = c->nentries - 1; i >= 0; i--) {
 		struct dirfd_cache_entry *e = &c->entry[i];
 		if (dirfd_path_is_or_under(e->path, dir)) {
@@ -473,7 +457,7 @@ static int fsys_dir_delete(struct apk_fsdir *d)
 	int fd = fsys_parentfd(d, &name);
 	if (fd < 0) return fd;
 	if (unlinkat(fd, name, AT_REMOVEDIR) < 0) return -errno;
-	dirfd_cache_drop(apk_pathbuilder_get(&d->pb));
+	dirfd_cache_drop(d->ac->dirfd_cache, apk_pathbuilder_get(&d->pb));
 	return 0;
 }
 
@@ -548,7 +532,7 @@ static int fsys_file_extract(struct apk_ctx *ac, const struct apk_file_info *fi,
 
 	if (!S_ISDIR(fi->mode) && !(extract_flags & APK_FSEXTRACTF_NO_OVERWRITE)) {
 		if (unlinkat(atfd, fn, 0) != 0 && errno != ENOENT) return -errno;
-		if (!pkgctx.ptr) dirfd_cache_drop(APK_BLOB_STR(fi->name));
+		if (!pkgctx.ptr) dirfd_cache_drop(ac->dirfd_cache, APK_BLOB_STR(fi->name));
 	}
 
 	switch (fi->mode & S_IFMT) {
@@ -586,7 +570,7 @@ static int fsys_file_extract(struct apk_ctx *ac, const struct apk_file_info *fi,
 		break;
 	case S_IFLNK:
 		if (symlinkat(link_target, atfd, fn) < 0) return -errno;
-		if (!pkgctx.ptr) dirfd_cache_drop(APK_BLOB_STR(fi->name));
+		if (!pkgctx.ptr) dirfd_cache_drop(ac->dirfd_cache, APK_BLOB_STR(fi->name));
 		break;
 	case S_IFBLK:
 	case S_IFCHR:
@@ -667,7 +651,7 @@ static int fsys_file_control(struct apk_fsdir *d, apk_blob_t filename, int ctrl)
 			rc = -errno;
 			unlinkat(dfd, tmpname, 0);
 		} else {
-			dirfd_cache_drop(apk_pathbuilder_get(&d->pb));
+			dirfd_cache_drop(ac->dirfd_cache, apk_pathbuilder_get(&d->pb));
 		}
 		break;
 	case APK_FS_CTRL_APKNEW:
@@ -689,7 +673,7 @@ static int fsys_file_control(struct apk_fsdir *d, apk_blob_t filename, int ctrl)
 		if (unlinkat(dfd, fn, 0) < 0)
 			rc = -errno;
 		else
-			dirfd_cache_drop(apk_pathbuilder_get(&d->pb));
+			dirfd_cache_drop(ac->dirfd_cache, apk_pathbuilder_get(&d->pb));
 		break;
 	case APK_FS_CTRL_DELETE_APKNEW:
 		// remove apknew (which may or may not exist)

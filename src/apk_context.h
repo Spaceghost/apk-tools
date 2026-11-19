@@ -60,6 +60,7 @@
 				 APK_OPENF_NO_WORLD)
 
 struct apk_database;
+struct apk_dirfd_cache;
 
 struct apk_ctx {
 	struct apk_balloc ba;
@@ -88,6 +89,7 @@ struct apk_ctx {
 	struct apk_id_cache id_cache;
 	struct apk_database *db;
 	struct apk_query_spec query;
+	struct apk_dirfd_cache *dirfd_cache;
 	int root_fd, dest_fd;
 	unsigned int on_tty : 1;
 	unsigned int root_set : 1;
