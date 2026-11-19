@@ -5,6 +5,18 @@
 #include <cmocka.h>
 #include "apk_print.h"
 
+/* Fallback definitions for cmocka < 2.0 */
+#ifndef cast_ptr_to_uintmax_type
+#define cast_ptr_to_uintmax_type(value) cast_ptr_to_largest_integral_type(value)
+#endif
+#ifndef expect_uint_value
+#define expect_uint_value(function, parameter, value) \
+	expect_value(function, parameter, value)
+#endif
+#ifndef check_expected_uint
+#define check_expected_uint(parameter) check_expected(parameter)
+#endif
+
 #define assert_ptr_ok(c) _assert_true(!IS_ERR(c), #c, __FILE__, __LINE__)
 
 #define _assert_blob_equal(a, b, file, line) do { \
@@ -15,8 +27,8 @@
 
 #define _assert_blob_identical(a, b, file, line) do { \
 		_assert_int_equal(a.len, b.len, file, line); \
-		_assert_int_equal(cast_ptr_to_largest_integral_type(a.ptr), \
-				  cast_ptr_to_largest_integral_type(b.ptr), \
+		_assert_int_equal(cast_ptr_to_uintmax_type(a.ptr), \
+				  cast_ptr_to_uintmax_type(b.ptr), \
 				  file, line); \
 	} while (0)
 #define assert_blob_identical(a, b) _assert_blob_identical(a, b, __FILE__, __LINE__)

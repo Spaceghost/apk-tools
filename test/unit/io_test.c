@@ -24,13 +24,13 @@ int dup(int fd)
 DIR *fdopendir(int dirfd)
 {
 	assert_int_equal(MOCKFD, dirfd);
-	expect_value(closedir, dir, 1);
+	expect_uint_value(closedir, (uintptr_t)dir, 1);
 	return (DIR*) 1;
 }
 
 int closedir(DIR *dir)
 {
-	check_expected(dir);
+	check_expected_uint((uintptr_t)dir);
 	return 0;
 }
 
