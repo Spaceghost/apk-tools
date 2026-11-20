@@ -219,7 +219,16 @@ void apk_pkey_free(struct apk_pkey *pkey)
 
 static int apk_mbedtls_random(void *ctx, unsigned char *out, size_t len)
 {
-	return (int)getrandom(out, len, 0);
+	while (len) {
+		ssize_t r = getrandom(out, len, 0);
+		if (r < 0) {
+			if (errno == EINTR) continue;
+			return -1;
+		}
+		out += r;
+		len -= r;
+	}
+	return 0;
 }
 
 #if MBEDTLS_VERSION_NUMBER >= 0x03000000
@@ -282,13 +291,18 @@ int apk_pkey_load(struct apk_pkey *pkey, int dirfd, const char *fn, int priv)
 	mbedtls_platform_zeroize(buf, blen);
 	mbedtls_free(buf);
 
-	if (ret == 0) ret = apk_pkey_fingerprint(pkey);
+	if (ret != 0) {
+		apk_pkey_free(pkey);
+		return -APKE_CRYPTO_KEY_FORMAT;
+	}
+
+	ret = apk_pkey_fingerprint(pkey);
 	if (ret != 0) {
 		apk_pkey_free(pkey);
 		return -APKE_CRYPTO_ERROR;
 	}
 
-	return ret;
+	return 0;
 }
 
 int apk_sign_start(struct apk_digest_ctx *dctx, uint8_t alg, struct apk_pkey *pkey)
