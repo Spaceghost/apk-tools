@@ -94,6 +94,7 @@ struct apk_query_spec {
 		uint8_t search : 1;
 		uint8_t empty_matches_all : 1;
 		uint8_t summarize : 1;
+		uint8_t from_set : 1;
 	} mode;
 	struct {
 		uint8_t all_matches : 1;
@@ -123,6 +124,7 @@ uint64_t apk_query_fields(apk_blob_t field_list, uint64_t allowed_fields);
 apk_blob_t apk_query_field(int f);
 apk_blob_t apk_query_printable_field(apk_blob_t f);
 int apk_query_parse_option(struct apk_ctx *ac, int opt, const char *optarg);
+void apk_query_prepare(struct apk_ctx *ac);
 extern const char optgroup_query_desc[];
 
 int apk_package_serialize(struct apk_package *pkg, struct apk_database *db, struct apk_query_spec *qs, struct apk_serializer *ser);

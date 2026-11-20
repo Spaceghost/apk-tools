@@ -192,9 +192,6 @@ int apk_query_parse_option(struct apk_ctx *ac, int opt, const char *optarg)
 		break;
 	case OPT_QUERY_installed:
 		qs->filter.installed = 1;
-		// implies --from installed
-		ac->open_flags &= ~all_flags;
-		ac->open_flags |= APK_OPENF_NO_SYS_REPOS;
 		break;
 	case OPT_QUERY_match:
 		qs->match = apk_query_fields(APK_BLOB_STR(optarg), APK_Q_FIELDS_MATCHABLE);
@@ -221,6 +218,7 @@ int apk_query_parse_option(struct apk_ctx *ac, int opt, const char *optarg)
 		ac->open_flags &= ~APK_OPENF_NO_WORLD;
 		break;
 	case OPT_QUERY_from:
+		qs->mode.from_set = 1;
 		if (strcmp(optarg, "none") == 0) {
 			flags = APK_OPENF_NO_SYS_REPOS | APK_OPENF_NO_INSTALLED_REPO | APK_OPENF_NO_INSTALLED;
 		} else if (strcmp(optarg, "repositories") == 0) {
@@ -242,6 +240,18 @@ int apk_query_parse_option(struct apk_ctx *ac, int opt, const char *optarg)
 		return -ENOTSUP;
 	}
 	return 0;
+}
+
+void apk_query_prepare(struct apk_ctx *ac)
+{
+	struct apk_query_spec *qs = &ac->query;
+
+	// explicit --from selects the sources, the filters must not enable additional sources
+	if (qs->mode.from_set || !qs->filter.installed) return;
+
+	// --installed implies --from installed, unless --available needs the repositories
+	ac->open_flags &= ~(APK_OPENF_NO_SYS_REPOS | APK_OPENF_NO_INSTALLED_REPO | APK_OPENF_NO_INSTALLED);
+	if (!qs->filter.available) ac->open_flags |= APK_OPENF_NO_SYS_REPOS;
 }
 
 static int serialize_blobptr_array(struct apk_serializer *ser, struct apk_blobptr_array *a)

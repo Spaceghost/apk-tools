@@ -67,6 +67,7 @@ int apk_ctx_prepare(struct apk_ctx *ac)
 		ac->open_flags &= ~(APK_OPENF_CREATE | APK_OPENF_WRITE);
 		ac->open_flags |= APK_OPENF_READ;
 	}
+	apk_query_prepare(ac);
 	if (ac->flags & APK_ALLOW_UNTRUSTED) ac->trust.allow_untrusted = 1;
 	if (!ac->cache_dir) ac->cache_dir = "etc/apk/cache";
 	else ac->cache_dir_set = 1;

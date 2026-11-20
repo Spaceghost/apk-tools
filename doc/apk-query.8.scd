@@ -53,7 +53,9 @@ The applets supporting query specifiers recognize the following options:
 *--from* _FROMSPEC_
 	Search packages from: *system* (all system sources), *repositories*
 	(exclude installed database), *installed* (exclude normal repositories)
-	or *none* (command-line repositories only).
+	or *none* (command-line repositories only). The *--installed* and
+	*--available* filters may not match anything in combination with
+	*--from*.
 
 *--installed*
 	Filter selection to installed packages.
