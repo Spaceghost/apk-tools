@@ -490,8 +490,6 @@ static char *format_tmpname(struct apk_digest_ctx *dctx, apk_blob_t pkgctx, apk_
 
 	apk_digest_ctx_reset_alg(dctx, APK_DIGEST_SHA256);
 	apk_digest_ctx_update(dctx, pkgctx.ptr, pkgctx.len);
-	// Full pathname digest: two db files may alias to the same
-	// physical directory and must not share a tmpname.
 	apk_digest_ctx_update(dctx, filename.ptr, filename.len);
 	apk_digest_ctx_final(dctx, &d);
 
@@ -530,7 +528,7 @@ static int fsys_file_extract(struct apk_ctx *ac, const struct apk_file_info *fi,
 	int atfd = dirfd_cache_resolve(ac, dir);
 	if (atfd < 0) return atfd;
 
-	if (pkgctx.ptr) fn = format_tmpname(&ac->dctx, pkgctx, APK_BLOB_STR(fi->name), tmpname_file);
+	if (pkgctx.ptr) fn = format_tmpname(&ac->dctx, pkgctx, name, tmpname_file);
 
 	if (!S_ISDIR(fi->mode) && !(extract_flags & APK_FSEXTRACTF_NO_OVERWRITE)) {
 		if (unlinkat(atfd, fn, 0) != 0 && errno != ENOENT) return -errno;
@@ -565,9 +563,12 @@ static int fsys_file_extract(struct apk_ctx *ac, const struct apk_file_info *fi,
 			lfd = dirfd_cache_resolve(ac, ldir);
 			if (lfd < 0) return lfd;
 
-			if (pkgctx.ptr) lt = format_tmpname(&ac->dctx, pkgctx, b_link_target, tmpname_linktarget);
+			if (pkgctx.ptr) lt = format_tmpname(&ac->dctx, pkgctx, lname, tmpname_linktarget);
 			r = linkat(lfd, lt, atfd, fn, 0);
-			if (r < 0) return -errno;
+			if (r < 0) {
+				if (errno == ENOENT && pkgctx.ptr) return -APKE_DIR_ALIAS;
+				return -errno;
+			}
 		}
 		break;
 	case S_IFLNK:
@@ -643,15 +644,16 @@ static int fsys_file_control(struct apk_fsdir *d, apk_blob_t filename, int ctrl)
 	if (n < 0) return n;
 
 	const char *fn = apk_pathbuilder_name(&d->pb, n);
-	apk_blob_t fullname = apk_pathbuilder_get(&d->pb);
 	int rc = 0, pinfd = -1;
 	switch (ctrl & ~APK_FS_CTRL_CLEAR_MASK) {
 	case APK_FS_CTRL_COMMIT:
 		// rename tmpname -> realname
 		pinfd = fsys_file_pin(dfd, fn, ctrl);
-		if (renameat(dfd, format_tmpname(&ac->dctx, d->pkgctx, fullname, tmpname),
+		if (renameat(dfd, format_tmpname(&ac->dctx, d->pkgctx, filename, tmpname),
 			     dfd, fn) < 0) {
 			rc = -errno;
+			// ENOENT: an aliased duplicate already consumed the tmpname
+			if (rc == -ENOENT && d->pkgctx.ptr) rc = -APKE_DIR_ALIAS;
 			unlinkat(dfd, tmpname, 0);
 		} else {
 			dirfd_cache_drop(ac->dirfd_cache, apk_pathbuilder_get(&d->pb));
@@ -661,13 +663,15 @@ static int fsys_file_control(struct apk_fsdir *d, apk_blob_t filename, int ctrl)
 		// rename tmpname -> realname.apk-new
 		rc = apk_fmt(apknewname, sizeof apknewname, "%s%s", fn, ac->apknew_suffix);
 		if (rc < 0) break;
-		if (renameat(dfd, format_tmpname(&ac->dctx, d->pkgctx, fullname, tmpname),
-			     dfd, apknewname) < 0)
+		if (renameat(dfd, format_tmpname(&ac->dctx, d->pkgctx, filename, tmpname),
+			     dfd, apknewname) < 0) {
 			rc = -errno;
+			if (rc == -ENOENT && d->pkgctx.ptr) rc = -APKE_DIR_ALIAS;
+		}
 		break;
 	case APK_FS_CTRL_CANCEL:
 		// unlink tmpname
-		if (unlinkat(dfd, format_tmpname(&ac->dctx, d->pkgctx, fullname, tmpname), 0) < 0)
+		if (unlinkat(dfd, format_tmpname(&ac->dctx, d->pkgctx, filename, tmpname), 0) < 0)
 			rc = -errno;
 		break;
 	case APK_FS_CTRL_DELETE:

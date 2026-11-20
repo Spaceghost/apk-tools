@@ -47,21 +47,24 @@ cd "$TEST_ROOT"
 [ -L bin ] || assert "/bin is no longer a symlink"
 cd - > /dev/null
 
-# Aliased duplicates in the same package: on the usr-merged root both
-# entries resolve into usr/bin and must each get their own tmpname
+# Aliased duplicates in one package: both resolve into usr/bin and
+# must fail with a directory aliasing error
 create_pkg test-b 1.0 btool yes
 create_pkg test-b 2.0 btool yes
 
-$APK add test-b-1.0.apk || assert "install of aliased duplicates failed"
-cd "$TEST_ROOT"
-[ -f usr/bin/btool ] || assert "usr/bin/btool not committed as regular file"
-[ "$(cat usr/bin/btool)" = "package 1.0" ] || assert "usr/bin/btool content"
-cd - > /dev/null
+$APK add test-b-1.0.apk 2>b.log && assert "install of aliased duplicates did not fail"
+grep -q "files resolve to the same path" b.log || assert "alias conflict not reported for install"
 
-$APK add test-b-2.0.apk || assert "upgrade of aliased duplicates failed"
-cd "$TEST_ROOT"
-[ -f usr/bin/btool ] || assert "usr/bin/btool not committed as regular file after upgrade"
-[ "$(cat usr/bin/btool)" = "package 2.0" ] || assert "usr/bin/btool content after upgrade"
-cd - > /dev/null
+$APK add test-b-2.0.apk 2>b2.log && assert "upgrade of aliased duplicates did not fail"
+grep -q "files resolve to the same path" b2.log || assert "alias conflict not reported for upgrade"
+
+# Aliased hardlink duplicates: caught at extraction time
+mkdir -p files/test-c-1.0/usr/bin files/test-c-1.0/bin
+echo "package 1.0" > files/test-c-1.0/usr/bin/ctool
+ln files/test-c-1.0/usr/bin/ctool files/test-c-1.0/bin/ctool
+$APK mkpkg -I name:test-c -I version:1.0 -F files/test-c-1.0 -o test-c-1.0.apk
+
+$APK add test-c-1.0.apk 2>c.log && assert "install of aliased hardlinks did not fail"
+grep -q "files resolve to the same path" c.log || assert "alias conflict not reported for hardlink"
 
 exit 0

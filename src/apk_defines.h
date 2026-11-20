@@ -102,6 +102,7 @@ enum {
 	APKE_REPO_KEYWORD,
 	APKE_REPO_VARIABLE,
 	APKE_BUFFER_SIZE,
+	APKE_DIR_ALIAS,
 };
 
 static inline void *ERR_PTR(long error) { return (void*) error; }

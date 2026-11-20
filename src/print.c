@@ -86,6 +86,7 @@
 	func(APKE_REPO_KEYWORD,		"unsupported repositories file keyword") \
 	func(APKE_REPO_VARIABLE,	"undefined or too long repositories file variable") \
 	func(APKE_BUFFER_SIZE,		"internal buffer too small") \
+	func(APKE_DIR_ALIAS,		"files resolve to the same path") \
 
 const char *apk_error_str(int error)
 {
