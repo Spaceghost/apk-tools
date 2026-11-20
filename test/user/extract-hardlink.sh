@@ -3,8 +3,6 @@
 TESTDIR=$(realpath "${TESTDIR:-"$(dirname "$0")"/..}")
 . "$TESTDIR"/testlib.sh
 
-require_programs xxd
-
 if ! stat -c "%D:%i" /dev/null > /dev/null 2>&1; then
 	dev_inode() {
 		stat -f "%Xd:%i" "$@"
@@ -41,7 +39,7 @@ INODE="$(dev_inode dest/a/aaa)"
 # a hardlink target that is not an extracted regular file must be
 # rejected while the rest of the package is still extracted: retarget
 # all links at a same-length path ("a/xyz") not present in the package
-xxd -p -c100000 extract-hardlink-1.0.apk | sed -e 's,612f616161,612f78797a,g' | xxd -rp > ehlneg.apk
+replace_bytes extract-hardlink-1.0.apk ehlneg.apk 612f616161 612f78797a 1
 
 mkdir dest2
 $APK extract ehlneg.apk --destination dest2 2>ehlneg.log && assert "dangling hardlink target not rejected"

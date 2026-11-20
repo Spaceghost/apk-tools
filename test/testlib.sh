@@ -19,6 +19,23 @@ require_programs() {
 	done
 }
 
+# replace_bytes IN OUT OLD_HEX NEW_HEX [EXPECTED_COUNT]
+# Same-length, occurrence-checked binary byte replacement.
+replace_bytes() {
+	require_programs python3
+	python3 - "$@" <<-'EOF'
+import sys
+src, dst, old, new = sys.argv[1:5]
+want = int(sys.argv[5]) if len(sys.argv) > 5 else 1
+data = open(src, "rb").read()
+old = bytes.fromhex(old)
+new = bytes.fromhex(new)
+assert len(old) == len(new), "replacement must be same length"
+assert data.count(old) == want, "pattern occurs %d times, expected %d" % (data.count(old), want)
+open(dst, "wb").write(data.replace(old, new))
+EOF
+}
+
 glob_one() {
 	# shellcheck disable=SC2048 # argument is wildcard needing expansion
 	for a in $*; do
