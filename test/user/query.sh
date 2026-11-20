@@ -218,20 +218,19 @@ EOF
 # list/search with combined --available and --installed filters
 APK="$APK --allow-untrusted"
 
-mkdir -p files/a-1.0 repo/x86_64
+mkdir -p files/a-1.0
 echo a > files/a-1.0/a
-$APK mkpkg -I name:a -I version:1.0 -F files/a-1.0 -o a-1.0.apk
-mv a-1.0.apk repo/x86_64/
-echo "$PWD/repo" > "$TEST_ROOT"/etc/apk/repositories
-$APK mkndx repo/x86_64/*.apk -o repo/x86_64/APKINDEX.tar.gz >/dev/null
+$APK mkpkg -I name:a -I arch:noarch -I version:1.0 -F files/a-1.0 -o a-1.0.apk
+$APK mkndx a-1.0.apk -o index.adb >/dev/null
+APK="$APK --repository $PWD/index.adb"
 $APK add $TEST_USERMODE a=1.0 >/dev/null 2>&1
 
 $APK list --available --installed a 2>&1 | diff -u /dev/fd/4 4<<EOF - || assert "wrong result"
-a-1.0 x86_64 {a} () [installed]
+a-1.0 noarch {a} () [installed]
 EOF
 
 $APK list -I -a a 2>&1 | diff -u /dev/fd/4 4<<EOF - || assert "wrong result"
-a-1.0 x86_64 {a} () [installed]
+a-1.0 noarch {a} () [installed]
 EOF
 
 $APK search --available --installed a 2>&1 | diff -u /dev/fd/4 4<<EOF - || assert "wrong result"
@@ -245,7 +244,9 @@ EOF
 $APK list --installed --from none a 2>&1 | diff -u /dev/fd/4 4<<EOF - || assert "wrong result"
 EOF
 
+# --from installed keeps command-line repositories, so --available still matches
 $APK list --from installed --available a 2>&1 | diff -u /dev/fd/4 4<<EOF - || assert "wrong result"
+a-1.0 noarch {a} () [installed]
 EOF
 
 $APK list --from repositories --installed a 2>&1 | diff -u /dev/fd/4 4<<EOF - || assert "wrong result"
@@ -256,7 +257,7 @@ EOF
 
 # --from system provides all sources, so both filters can match
 $APK list --from system --available --installed a 2>&1 | diff -u /dev/fd/4 4<<EOF - || assert "wrong result"
-a-1.0 x86_64 {a} () [installed]
+a-1.0 noarch {a} () [installed]
 EOF
 
 $APK list --available --manifest a 2>&1 | diff -u /dev/fd/4 4<<EOF - || assert "wrong result"
