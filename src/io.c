@@ -46,7 +46,8 @@ static inline int atfd_error(int atfd)
 
 int apk_make_dirs(int root_fd, const char *dirname, mode_t dirmode, mode_t parentmode)
 {
-	char parentdir[PATH_MAX], *slash;
+	char parentdir[PATH_MAX];
+	const char *slash;
 
 	if (faccessat(root_fd, dirname, F_OK, 0) == 0) return 0;
 	if (mkdirat(root_fd, dirname, dirmode) == 0) return 0;

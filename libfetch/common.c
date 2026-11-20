@@ -544,7 +544,7 @@ fetch_ssl(conn_t *conn, const struct url *URL, int verbose)
 	}
 
 	if (verbose) {
-		X509_NAME *name;
+		const X509_NAME *name;
 		char *str;
 
 		fetch_info("SSL connection established using %s\n", SSL_get_cipher(conn->ssl));
