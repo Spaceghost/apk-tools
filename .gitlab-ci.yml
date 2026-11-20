@@ -69,6 +69,19 @@ build:alpine-muon:
     - ci-build
     - x86_64
 
+build:alpine-muon-mbedtls:
+  stage: build
+  image: alpinelinux/build-base:latest-x86_64
+  script:
+    - EXTRA="--repository=$(sed -ne 's/main/community/p' < /etc/apk/repositories) mbedtls2-dev"
+    - doas apk add -u muon $ALPINE_DEPS $ALPINE_STATIC_DEPS zstd-dev $EXTRA
+    - muon setup -Dpython=disabled -Dcrypto_backend=mbedtls -Durl_backend=wget build
+    - ninja -C build
+    - muon -C build test
+  tags:
+    - ci-build
+    - x86_64
+
 build:debian:
   image: debian
   stage: build
