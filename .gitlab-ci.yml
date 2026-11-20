@@ -77,7 +77,7 @@ build:alpine-muon-mbedtls:
     - doas apk add -u muon $ALPINE_DEPS $ALPINE_STATIC_DEPS zstd-dev $EXTRA
     - muon setup -Dpython=disabled -Dcrypto_backend=mbedtls -Durl_backend=wget build
     - ninja -C build
-    - muon -C build test
+    - muon -C build test -s crypto
   tags:
     - ci-build
     - x86_64

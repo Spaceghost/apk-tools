@@ -1,4 +1,5 @@
 subdir('unit')
+subdir('crypto')
 
 enum_sh = find_program('enum.sh', required: get_option('tests'))
 solver_sh = find_program('solver.sh', required: get_option('tests'))

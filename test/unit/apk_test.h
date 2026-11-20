@@ -16,6 +16,10 @@
 #ifndef check_expected_uint
 #define check_expected_uint(parameter) check_expected(parameter)
 #endif
+#ifndef assert_uint_in_range
+#define assert_uint_in_range(value, minimum, maximum) \
+	assert_in_range(value, minimum, maximum)
+#endif
 
 #define assert_ptr_ok(c) _assert_true(!IS_ERR(c), #c, __FILE__, __LINE__)
 
