@@ -26,17 +26,33 @@ foreach f : check_symbols
 	endif
 endforeach
 
-# Check for wrong (non-POSIX) qsort_r prototype
+# Probe the qsort_r prototype variants, POSIX first.
+qsort_r_prototypes = [
+	['POSIX', 'void (*)(void *, size_t, size_t,\n\t\t\tint (*)(const void *, const void *, void *), void *)'],
+	['BSD', 'void (*)(void *, size_t, size_t, void *,\n\t\t\tint (*)(void *, const void *, const void *))'],
+]
 qsort_r_test = '''
 	#define _GNU_SOURCE
 	#include <stdlib.h>
 	_Static_assert(_Generic((qsort_r),
-		void (*)(void *, size_t, size_t, void *,
-			int (*)(void *, const void *, const void *)) : 1, default: 0),
-		"Bad prototype not matched");
+		@0@ : 1, default: 0),
+		"@1@ prototype not matched");
 '''
-if cc.compiles(qsort_r_test, name: 'Test qsort_r non-POSIX prototype')
-	add_project_arguments('-DHAVE_BROKEN_QSORT_R', language: 'c')
+
+if cc.has_header_symbol('stdlib.h', 'qsort_r', args: ['-D_GNU_SOURCE'])
+	qsort_r_variant = ''
+	foreach p : qsort_r_prototypes
+		test = qsort_r_test.format(p.get(1), p.get(0))
+		if cc.compiles(test, name: 'Test qsort_r @0@ prototype'.format(p.get(0)))
+			qsort_r_variant = p.get(0)
+			break
+		endif
+	endforeach
+	if qsort_r_variant == 'BSD'
+		add_project_arguments('-DHAVE_BROKEN_QSORT_R', language: 'c')
+	elif qsort_r_variant == ''
+		error('Unrecognized qsort_r prototype')
+	endif
 endif
 
 if libportability_src.length() > 0
