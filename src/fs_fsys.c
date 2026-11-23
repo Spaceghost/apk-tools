@@ -748,6 +748,7 @@ static const struct apk_fsdir_ops *apk_fsops_get(apk_blob_t dir)
 bool apk_fs_is_malicious_filename(apk_blob_t file)
 {
 	const uint8_t *ptr = (const uint8_t *) file.ptr;
+	if (file.len > NAME_MAX) return true;
 	for (int i = 0; i < file.len; i++) {
 		if (ptr[i] < 0x20 || ptr[i] == '/' || ptr[i] == 0x7f) return true;
 	}
