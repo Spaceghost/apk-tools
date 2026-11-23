@@ -30,6 +30,7 @@
 struct dirfd_resolver {
 	struct apk_dirfd_cache *c;
 	int dest_fd;
+	int protect_fd;
 	int loops;
 };
 
@@ -99,7 +100,7 @@ static int dirfd_cache_seed(struct dirfd_resolver *dr, apk_blob_t path, int *cur
 	return dr->dest_fd;
 }
 
-static int dirfd_cache_add(struct apk_dirfd_cache *c, apk_blob_t key, int fd)
+static int dirfd_cache_add(struct apk_dirfd_cache *c, apk_blob_t key, int fd, int protect_fd)
 {
 	char *path;
 	struct dirfd_cache_entry *e = NULL;
@@ -109,10 +110,12 @@ static int dirfd_cache_add(struct apk_dirfd_cache *c, apk_blob_t key, int fd)
 	int64_t score = 0;
 	for (i = 0; i < c->nentries; i++) {
 		struct dirfd_cache_entry *cur = &c->entry[i];
-		int64_t s = (int64_t)cur->tick - depth_bias * cur->depth;
-		if (e == NULL || s < score) {
-			e = cur;
-			score = s;
+		if (cur->fd != protect_fd) {
+			int64_t s = (int64_t)cur->tick - depth_bias * cur->depth;
+			if (e == NULL || s < score) {
+				e = cur;
+				score = s;
+			}
 		}
 		if (apk_blob_compare(cur->path, key) == 0) {
 			cur->tick = ++c->tick;
@@ -202,12 +205,16 @@ static int dirfd_resolve(struct dirfd_resolver *dr, apk_blob_t key)
 	fd = dirfd_walk(dr, key);
 	if (fd < 0) return fd;
 
-	return dirfd_cache_add(dr->c, key, fd);
+	return dirfd_cache_add(dr->c, key, fd, dr->protect_fd);
 }
 
 // Resolve 'path' with resolve-in-root semantics. The cache assumes the tree
 // is not concurrently modified; user planted symlinks are never followed into
 // a more privileged directory.
+//
+// The walk only hands walk-owned fds to the cache ('owned' guards every
+// dirfd_cache_add), never holds a borrow across one, never returns or
+// closes a borrow; on error only owned fds are closed.
 static int dirfd_walk(struct dirfd_resolver *dr, apk_blob_t path)
 {
 	struct apk_dirfd_cache *c = dr->c;
@@ -256,7 +263,7 @@ static int dirfd_walk(struct dirfd_resolver *dr, apk_blob_t path)
 			int t = parent.len;
 			// Hand the popped fd to the cache before dropping it.
 			if (owned) {
-				dirfd_cache_add(c, APK_BLOB_PTR_LEN(buf, curpos), curfd);
+				dirfd_cache_add(c, APK_BLOB_PTR_LEN(buf, curpos), curfd, dr->protect_fd);
 				owned = false;
 			}
 			nfd = dirfd_resolve(dr, parent);
@@ -336,7 +343,7 @@ static int dirfd_walk(struct dirfd_resolver *dr, apk_blob_t path)
 				newlen = tlen + ((restlen) ? 1 + restlen : 0);
 				if (newlen >= PATH_MAX) { r = -ENAMETOOLONG; goto err; }
 				if (owned)
-					dirfd_cache_add(c, APK_BLOB_PTR_LEN(buf, curpos), curfd);
+					dirfd_cache_add(c, APK_BLOB_PTR_LEN(buf, curpos), curfd, dr->protect_fd);
 				if (restlen) memmove(buf + tlen + 1, buf + e + 1, restlen);
 				memcpy(buf, tgt.ptr + 1, tlen);
 				if (restlen) buf[tlen] = '/';
@@ -371,7 +378,7 @@ static int dirfd_walk(struct dirfd_resolver *dr, apk_blob_t path)
 
 		// Descend, cache the previous position so later resolutions seed from it.
 		if (e < explen) buf[e] = '/';
-		if (owned) dirfd_cache_add(c, APK_BLOB_PTR_LEN(buf, curpos), curfd);
+		if (owned) dirfd_cache_add(c, APK_BLOB_PTR_LEN(buf, curpos), curfd, dr->protect_fd);
 		curfd = nfd;
 		owned = true;
 		curpos = e;
@@ -392,12 +399,16 @@ err:
 	return r;
 }
 
-static int dirfd_cache_resolve(struct apk_ctx *ac, apk_blob_t dir)
+static int dirfd_cache_resolve(struct apk_ctx *ac, apk_blob_t dir, int protect_fd)
 {
 	struct apk_dirfd_cache *c = dirfd_cache_get(ac);
 	if (!c) return -errno;
 
-	struct dirfd_resolver dr = { .c = c, .dest_fd = apk_ctx_fd_dest(ac) };
+	struct dirfd_resolver dr = {
+		.c = c,
+		.dest_fd = apk_ctx_fd_dest(ac),
+		.protect_fd = protect_fd,
+	};
 	return dirfd_resolve(&dr, dir);
 }
 
@@ -439,7 +450,7 @@ static int fsys_parentfd(struct apk_fsdir *d, const char **name)
 		bname = b;
 	}
 	*name = bname.ptr;
-	return dirfd_cache_resolve(d->ac, parent);
+	return dirfd_cache_resolve(d->ac, parent, -1);
 }
 
 static int fsys_dir_create(struct apk_fsdir *d, mode_t mode, uid_t uid, gid_t gid)
@@ -525,7 +536,7 @@ static int fsys_file_extract(struct apk_ctx *ac, const struct apk_file_info *fi,
 	const char *link_target = fi->link_target;
 	const char *fn = split_path(fi->name, &dir, &name);
 
-	int atfd = dirfd_cache_resolve(ac, dir);
+	int atfd = dirfd_cache_resolve(ac, dir, -1);
 	if (atfd < 0) return atfd;
 
 	if (pkgctx.ptr) fn = format_tmpname(&ac->dctx, pkgctx, name, tmpname_file);
@@ -560,7 +571,8 @@ static int fsys_file_extract(struct apk_ctx *ac, const struct apk_file_info *fi,
 
 			if (apk_fs_is_malicious_pathname(b_link_target)) return -APKE_ADB_SCHEMA;
 
-			lfd = dirfd_cache_resolve(ac, ldir);
+			// atfd must survive the target directory resolution.
+			lfd = dirfd_cache_resolve(ac, ldir, atfd);
 			if (lfd < 0) return lfd;
 
 			if (pkgctx.ptr) lt = format_tmpname(&ac->dctx, pkgctx, lname, tmpname_linktarget);
@@ -637,7 +649,7 @@ static int fsys_file_control(struct apk_fsdir *d, apk_blob_t filename, int ctrl)
 	struct apk_ctx *ac = d->ac;
 	char tmpname[TMPNAME_MAX], apknewname[NAME_MAX + 64];
 
-	int dfd = dirfd_cache_resolve(d->ac, apk_pathbuilder_get(&d->pb));
+	int dfd = dirfd_cache_resolve(d->ac, apk_pathbuilder_get(&d->pb), -1);
 	if (dfd < 0) return dfd;
 
 	int n = apk_pathbuilder_pushb(&d->pb, filename);
@@ -703,7 +715,7 @@ static int fsys_file_info(struct apk_fsdir *d, apk_blob_t filename,
 	struct apk_ctx *ac = d->ac;
 	int n, dfd, r;
 
-	dfd = dirfd_cache_resolve(d->ac, apk_pathbuilder_get(&d->pb));
+	dfd = dirfd_cache_resolve(d->ac, apk_pathbuilder_get(&d->pb), -1);
 	if (dfd < 0) return dfd;
 
 	n = apk_pathbuilder_pushb(&d->pb, filename);
