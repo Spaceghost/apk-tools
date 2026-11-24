@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
+"""Build and use a local catalog of private BitTorrent v1 webseed torrents."""
+
+import argparse
+import base64
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+from urllib.parse import urlsplit
+
+
+PIECE_LENGTH = 256 * 1024
+ARIA2_OPTIONS = [
+    "aria2c", "--no-conf", "--enable-dht=false", "--enable-dht6=false",
+    "--enable-peer-exchange=false", "--bt-enable-lpd=false",
+    "--check-integrity=true", "--auto-file-renaming=false", "--file-allocation=none",
+    "--bt-tracker-connect-timeout=2", "--bt-tracker-timeout=3",
+    "--connect-timeout=3", "--timeout=5", "--summary-interval=0",
+    "--console-log-level=warn",
+]
+
+
+def bencode(value):
+    if isinstance(value, int):
+        return f"i{value}e".encode()
+    if isinstance(value, bytes):
+        return str(len(value)).encode() + b":" + value
+    if isinstance(value, list):
+        return b"l" + b"".join(map(bencode, value)) + b"e"
+    return b"d" + b"".join(bencode(key) + bencode(value[key]) for key in sorted(value)) + b"e"
+
+
+def http_url(url):
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("expected an http(s) URL")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise ValueError("URLs must be public to the swarm and have no credentials or fragment")
+
+
+def catalog_entry(catalog, url):
+    return catalog / (hashlib.sha256(url.encode()).hexdigest() + ".json")
+
+
+def atomic_write(path, content):
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as output:
+        staging = Path(output.name)
+        try:
+            output.write(content)
+            output.close()
+            staging.replace(path)
+        finally:
+            staging.unlink(missing_ok=True)
+
+
+def publish(args):
+    http_url(args.url)
+    http_url(args.tracker)
+    for url in args.webseed or [args.url]:
+        http_url(url)
+        if url.endswith("/"):
+            raise ValueError("a webseed must be the full URL of the immutable file")
+    digest = hashlib.sha256()
+    pieces = bytearray()
+    length = 0
+    with args.file.open("rb") as source:
+        while block := source.read(PIECE_LENGTH):
+            digest.update(block)
+            pieces.extend(hashlib.sha1(block).digest())
+            length += len(block)
+    if not length:
+        raise ValueError("cannot publish an empty file")
+
+    info = {
+        b"length": length,
+        b"name": b"payload",
+        b"piece length": PIECE_LENGTH,
+        b"pieces": bytes(pieces),
+        b"private": 1,
+    }
+    torrent = bencode({
+        b"announce": args.tracker.encode(),
+        b"info": info,
+        b"url-list": [url.encode() for url in args.webseed or [args.url]],
+    })
+    args.catalog.mkdir(parents=True, exist_ok=True)
+    entry = catalog_entry(args.catalog, args.url)
+    manifest = {"sha256": digest.hexdigest(), "torrent": base64.b64encode(torrent).decode()}
+    atomic_write(entry, (json.dumps(manifest) + "\n").encode())
+    atomic_write(entry.with_suffix(".torrent"), torrent)
+    print(entry.with_suffix(".torrent"))
+
+
+def matches(path, digest, algorithm="sha256"):
+    try:
+        with path.open("rb") as source:
+            return hashlib.file_digest(source, algorithm).hexdigest() == digest
+    except FileNotFoundError:
+        return False
+
+
+def download(directory, torrent, seconds):
+    with tempfile.TemporaryDirectory(dir=directory) as staging:
+        command = ARIA2_OPTIONS + [
+            "--seed-time=0", "--listen-port=49152-65535", f"--dir={staging}", str(torrent),
+        ]
+        subprocess.run(command, stdout=subprocess.DEVNULL, check=True, timeout=seconds)
+        result = Path(staging) / "payload"
+        if not matches(result, directory.name):
+            raise ValueError("download did not match the catalog SHA-256")
+        result.replace(directory / "payload")
+
+
+def use(args):
+    http_url(args.url)
+    if not args.catalog or not args.cache:
+        raise ValueError("set APK_WEBSEED_CATALOG and APK_WEBSEED_CACHE")
+    try:
+        manifest = json.loads(catalog_entry(args.catalog, args.url).read_bytes())
+    except FileNotFoundError:
+        return 1
+    digest = manifest["sha256"]
+    if not isinstance(digest, str) or len(digest) != 64 or len(bytes.fromhex(digest)) != 32:
+        raise ValueError("invalid catalog SHA-256")
+    torrent_data = base64.b64decode(manifest["torrent"], validate=True)
+    directory = args.cache.resolve() / digest
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    torrent = directory / (hashlib.sha256(torrent_data).hexdigest() + ".torrent")
+    payload = directory / "payload"
+
+    with (directory / "lock").open("a") as lock:
+        # Another local client may be filling this object. Let the caller use HTTP.
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if not matches(payload, digest):
+            if args.command == "seed":
+                if not matches(args.file, digest):
+                    raise ValueError("seed input did not match the catalog SHA-256")
+                with tempfile.TemporaryDirectory(dir=directory) as staging:
+                    candidate = Path(staging) / "payload"
+                    shutil.copyfile(args.file, candidate)
+                    if not matches(candidate, digest):
+                        raise ValueError("seed input changed while copying")
+                    candidate.replace(payload)
+            else:
+                atomic_write(torrent, torrent_data)
+                download(directory, torrent, args.seconds)
+
+        if args.command == "fetch":
+            if args.checksum:
+                algorithm, separator, expected = args.checksum.partition(":")
+                if not separator or algorithm not in ("sha256", "sha512"):
+                    raise ValueError("expected sha256:HEX or sha512:HEX")
+                if not matches(payload, expected, algorithm):
+                    raise ValueError("download did not match the APKBUILD checksum")
+            with payload.open("rb") as source:
+                if args.output:
+                    with args.output.open("wb") as output:
+                        shutil.copyfileobj(source, output)
+                else:
+                    shutil.copyfileobj(source, sys.stdout.buffer)
+                    sys.stdout.buffer.flush()
+            return 0
+        atomic_write(torrent, torrent_data)
+
+    # Exec so a service manager can directly stop and supervise the seeder.
+    os.execvp(ARIA2_OPTIONS[0], ARIA2_OPTIONS + [
+        f"--dir={directory}", f"--listen-port={args.port}",
+        "--bt-hash-check-seed=true", "--seed-ratio=0", str(torrent),
+    ])
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--catalog", type=Path, default=os.environ.get("APK_WEBSEED_CATALOG"))
+    parser.add_argument("--cache", type=Path, default=os.environ.get("APK_WEBSEED_CACHE"))
+    commands = parser.add_subparsers(dest="command", required=True)
+    create = commands.add_parser("publish", help="generate catalog entry and BEP 19 torrent")
+    create.add_argument("--tracker", required=True)
+    create.add_argument("--webseed", action="append")
+    create.add_argument("url")
+    create.add_argument("file", type=Path)
+    fetch = commands.add_parser("fetch", help="fetch to stdout or a caller-owned output file")
+    fetch.add_argument("--seconds", type=int, choices=range(1, 121), metavar="1..120", default=8)
+    fetch.add_argument("--checksum", help="require sha256:HEX or sha512:HEX before writing")
+    fetch.add_argument("url")
+    fetch.add_argument("output", type=Path, nargs="?")
+    seed = commands.add_parser("seed", help="serve a catalogued file via BitTorrent")
+    seed.add_argument("--port", type=int, default=6881)
+    seed.add_argument("url")
+    seed.add_argument("file", type=Path)
+    args = parser.parse_args()
+    try:
+        if args.command == "publish":
+            if not args.catalog:
+                parser.error("publish requires --catalog or APK_WEBSEED_CATALOG")
+            publish(args)
+            return 0
+        return use(args)
+    except BlockingIOError:
+        return 1
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        print(f"apk-webseed: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

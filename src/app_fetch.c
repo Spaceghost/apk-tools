@@ -191,7 +191,7 @@ static int fetch_package(struct fetch_ctx *ctx, struct apk_package *pkg)
 		}
 	}
 
-	is = apk_istream_from_fd_url(pkg_fd, pkg_url, apk_db_url_since(db, 0));
+	is = apk_repo_package_istream(db, pkg, pkg_fd, pkg_url);
 	if (IS_ERR(is)) {
 		r = PTR_ERR(is);
 		goto err;

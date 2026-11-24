@@ -72,6 +72,7 @@ struct apk_ctx {
 	const char *keys_dir;
 	const char *cache_dir;
 	const char *repositories_file;
+	const char *webseed_fetcher;
 	const char *uvol;
 	const char *apknew_suffix;
 	apk_blob_t default_pkgname_spec;

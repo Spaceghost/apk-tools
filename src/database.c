@@ -16,6 +16,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <fnmatch.h>
 #include <sys/file.h>
 #include <sys/stat.h>
@@ -24,7 +26,6 @@
 # include <stdarg.h>
 # include <mntent.h>
 # include <sys/vfs.h>
-# include <sys/wait.h>
 # include <sys/mount.h>
 # include <sys/statvfs.h>
 # include <linux/magic.h>
@@ -686,6 +687,71 @@ int apk_repo_package_url(struct apk_database *db, struct apk_repository *repo, s
 	return 0;
 }
 
+static int webseed_download(const char *helper, const char *url)
+{
+	extern char **environ;
+	posix_spawn_file_actions_t actions;
+	const char *tmpdir = getenv("TMPDIR");
+	char filename[PATH_MAX];
+	pid_t pid;
+	int status, r;
+
+	if (!tmpdir || tmpdir[0] != '/') tmpdir = "/tmp";
+	if (apk_fmt(filename, sizeof filename, "%s/apk-webseed.XXXXXX", tmpdir) < 0)
+		return -1;
+	int temporary_fd = mkstemp(filename);
+	if (temporary_fd < 0) return -1;
+	r = unlink(filename);
+	int fd = r == 0 ? fcntl(temporary_fd, F_DUPFD_CLOEXEC, 3) : -1;
+	close(temporary_fd);
+	if (fd < 0) return -1;
+
+	char *const argv[] = { (char *)helper, "fetch", (char *)url, NULL };
+	r = posix_spawn_file_actions_init(&actions);
+	if (r != 0) goto fail;
+	r = posix_spawn_file_actions_adddup2(&actions, fd, STDOUT_FILENO);
+	if (r == 0) r = posix_spawn(&pid, helper, &actions, NULL, argv, environ);
+	posix_spawn_file_actions_destroy(&actions);
+	if (r != 0) goto fail;
+	do {
+		r = waitpid(pid, &status, 0);
+	} while (r < 0 && errno == EINTR);
+	if (r < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) goto fail;
+	if (lseek(fd, 0, SEEK_SET) < 0) goto fail;
+	return fd;
+
+fail:
+	close(fd);
+	return -1;
+}
+
+struct apk_istream *apk_repo_package_istream(struct apk_database *db, struct apk_package *pkg,
+					    int atfd, const char *url)
+{
+	struct apk_ctx *ac = db->ctx;
+	if (ac->webseed_fetcher && !(ac->flags & APK_NO_NETWORK) &&
+	    atfd == AT_FDCWD && !pkg->filename_ndx &&
+	    (strncmp(url, "https://", 8) == 0 || strncmp(url, "http://", 7) == 0)) {
+		int fd = webseed_download(ac->webseed_fetcher, url);
+		if (fd >= 0) {
+			struct stat st;
+			int verify_fd = -1;
+			if (fstat(fd, &st) == 0 && st.st_size > 0 && (uint64_t)st.st_size == pkg->size)
+				verify_fd = fcntl(fd, F_DUPFD_CLOEXEC, 3);
+			if (verify_fd >= 0) {
+				struct apk_extract_ctx ectx;
+				apk_extract_init(&ectx, ac, NULL);
+				apk_extract_verify_identity(&ectx, pkg->digest_alg, apk_pkg_digest_blob(pkg));
+				if (apk_extract(&ectx, apk_istream_from_fd(verify_fd)) == 0 &&
+				    lseek(fd, 0, SEEK_SET) == 0)
+					return apk_istream_from_fd(fd);
+			}
+			close(fd);
+		}
+	}
+	return apk_istream_from_fd_url(atfd, url, apk_db_url_since(db, 0));
+}
+
 int apk_cache_download(struct apk_database *db, struct apk_repository *repo, struct apk_package *pkg, struct apk_progress *prog)
 {
 	struct apk_out *out = &db->ctx->out;
@@ -717,7 +783,10 @@ int apk_cache_download(struct apk_database *db, struct apk_repository *repo, str
 	os = apk_ostream_to_file_safe(cache_fd, cache_filename, 0644);
 	if (IS_ERR(os)) return PTR_ERR(os);
 
-	is = apk_istream_from_fd_url_if_modified(download_fd, download_url, apk_db_url_since(db, download_mtime));
+	if (pkg)
+		is = apk_repo_package_istream(db, pkg, download_fd, download_url);
+	else
+		is = apk_istream_from_fd_url_if_modified(download_fd, download_url, apk_db_url_since(db, download_mtime));
 	is = apk_progress_istream(&pis, is, prog);
 	is = apk_istream_tee(is, os, tee_flags);
 	apk_extract_init(&ectx, db->ctx, NULL);
@@ -3196,7 +3265,7 @@ static int apk_db_unpack_pkg(struct apk_database *db,
 	if (r < 0) goto err_msg;
 	if (apk_db_cache_active(db) && !pkg->cached && !(pkg->repos & db->local_repos)) need_copy = true;
 
-	is = apk_istream_from_fd_url(file_fd, file_url, apk_db_url_since(db, 0));
+	is = apk_repo_package_istream(db, pkg, file_fd, file_url);
 	if (IS_ERR(is)) {
 		r = PTR_ERR(is);
 		if (r == -ENOENT && !pkg->filename_ndx)

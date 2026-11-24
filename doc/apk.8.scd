@@ -300,6 +300,13 @@ The following options are available for all commands.
 *--version*, *-V*
 	Print program version and exit.
 
+*--webseed-fetcher* _ABSOLUTE-PATH_
+	Try a helper for HTTP(S) repository package downloads before using the ordinary
+	URL backend. The helper receives *fetch* and the package URL and writes
+	the complete package to stdout. apk verifies the result against the repository
+	index and retries the URL on failure. Index downloads and *--no-network*
+	operations do not use the helper. The executable must be trusted by the caller.
+
 *--wait* _TIME_
 	Wait for TIME seconds to get an exclusive repository lock before
 	failing.

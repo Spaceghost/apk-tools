@@ -83,6 +83,7 @@ static void version(struct apk_out *out, const char *prefix)
 	OPT(OPT_GLOBAL_verbose,			APK_OPT_SH("v") "verbose") \
 	OPT(OPT_GLOBAL_version,			APK_OPT_SH("V") "version") \
 	OPT(OPT_GLOBAL_wait,			APK_OPT_ARG "wait") \
+	OPT(OPT_GLOBAL_webseed_fetcher,	APK_OPT_ARG "webseed-fetcher") \
 
 APK_OPTIONS(optgroup_global_desc, GLOBAL_OPTIONS);
 
@@ -216,6 +217,10 @@ static int optgroup_global_parse(struct apk_ctx *ac, int opt, const char *optarg
 	case OPT_GLOBAL_version:
 		version(out, NULL);
 		return -ESHUTDOWN;
+	case OPT_GLOBAL_webseed_fetcher:
+		if (optarg[0] != '/') return -EINVAL;
+		ac->webseed_fetcher = optarg;
+		break;
 	case OPT_GLOBAL_wait:
 		ac->lock_wait = atoi(optarg);
 		break;

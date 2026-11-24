@@ -314,6 +314,8 @@ unsigned int apk_db_get_pinning_mask_repos(struct apk_database *db, unsigned sho
 struct apk_repository *apk_db_select_repo(struct apk_database *db, struct apk_package *pkg);
 
 int apk_repo_index_cache_url(struct apk_database *db, struct apk_repository *repo, int *fd, char *buf, size_t len);
+struct apk_istream *apk_repo_package_istream(struct apk_database *db, struct apk_package *pkg,
+					    int atfd, const char *url);
 int apk_repo_package_url(struct apk_database *db, struct apk_repository *repo, struct apk_package *pkg, int *fd, char *buf, size_t len);
 
 int apk_cache_download(struct apk_database *db, struct apk_repository *repo, struct apk_package *pkg, struct apk_progress *prog);

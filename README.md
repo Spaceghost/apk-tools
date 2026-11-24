@@ -30,3 +30,5 @@ Online documentation is available in the [doc/](doc/) directory in the form of m
 
 The [apk(8)](doc/apk.8.scd) man page provides a basic overview of the package management
 system.
+
+The Cascadia fork includes optional [LAN package delivery](doc/CASCADIA-WEBSEED.md).
